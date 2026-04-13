@@ -1,4 +1,7 @@
+import { useEffect } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { AuthProvider, useAuth } from './auth'
+import { setAuthToken } from './api'
 import Overview from './pages/Overview'
 import Manufacturers from './pages/Manufacturers'
 import ManufacturerDetail from './pages/ManufacturerDetail'
@@ -8,8 +11,14 @@ const NAV = [
   { path: '/manufacturers', label: 'Manufacturers' },
 ]
 
-export default function App() {
+function AppShell() {
   const location = useLocation()
+  const { user, token, signOut } = useAuth()
+
+  // Keep auth token in sync
+  useEffect(() => {
+    setAuthToken(token)
+  }, [token])
 
   return (
     <div className="min-h-screen bg-slate-900">
@@ -19,7 +28,7 @@ export default function App() {
           <Link to="/" className="text-white font-bold text-lg tracking-tight">
             RV Catalog
           </Link>
-          <nav className="flex gap-1">
+          <nav className="flex gap-1 flex-1">
             {NAV.map(n => (
               <Link
                 key={n.path}
@@ -34,6 +43,17 @@ export default function App() {
               </Link>
             ))}
           </nav>
+          {user && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-400">{user.email}</span>
+              <button
+                onClick={signOut}
+                className="text-xs text-slate-500 hover:text-white transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -46,5 +66,13 @@ export default function App() {
         </Routes>
       </main>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   )
 }

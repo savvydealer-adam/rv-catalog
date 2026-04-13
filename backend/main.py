@@ -3,10 +3,11 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from backend.auth import get_current_user, GOOGLE_CLIENT_ID
 from backend.database import init_db
 from backend.routers import manufacturers, models, health
 
@@ -27,10 +28,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API routes
-app.include_router(manufacturers.router)
-app.include_router(models.router)
-app.include_router(health.router)
+# API routes (protected by auth in production)
+app.include_router(manufacturers.router, dependencies=[Depends(get_current_user)])
+app.include_router(models.router, dependencies=[Depends(get_current_user)])
+app.include_router(health.router, dependencies=[Depends(get_current_user)])
+
+
+@app.get("/api/auth/config")
+def auth_config():
+    """Return OAuth config for the frontend (public, no auth required)."""
+    return {
+        "client_id": GOOGLE_CLIENT_ID,
+        "environment": ENVIRONMENT,
+    }
+
+
+@app.get("/api/auth/me")
+def auth_me(user: dict = Depends(get_current_user)):
+    """Return the current authenticated user."""
+    return user
 
 
 @app.on_event("startup")
