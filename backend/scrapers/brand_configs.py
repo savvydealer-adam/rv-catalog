@@ -42,6 +42,7 @@ CONFIGS: dict[str, BrandConfig] = {
             "/towables/travel-trailers",
             "/towables/fifth-wheels",
         ],
+        "force_playwright": True,
     },
     # Heartland: models under /travel-trailers/, /fifth-wheels/, /toy-haulers/
     "heartland": {
@@ -56,6 +57,7 @@ CONFIGS: dict[str, BrandConfig] = {
     # Coachmen: split motorhomes/towables sections
     "coachmen": {
         "listing_pages": [
+            "/brands",
             "/motorized",
             "/towables",
             "/class-a",
@@ -64,6 +66,7 @@ CONFIGS: dict[str, BrandConfig] = {
             "/travel-trailers",
             "/fifth-wheels",
         ],
+        "force_playwright": True,
     },
     # Forest River corporate: each division has its own subtree
     "forest-river": {
