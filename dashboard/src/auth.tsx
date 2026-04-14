@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { setAuthToken } from './api'
 
 interface AuthState {
   user: { email: string; name: string; picture: string } | null
@@ -93,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (res.ok) {
         const data = await res.json()
+        setAuthToken(idToken)  // sync immediately so child fetches have auth
         setUser({
           email: data.email,
           name: data.name || data.email,
@@ -119,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [handleCredentialResponse])
 
   const signOut = useCallback(() => {
+    setAuthToken(null)
     setUser(null)
     setToken(null)
     sessionStorage.removeItem('rv_catalog_token')
