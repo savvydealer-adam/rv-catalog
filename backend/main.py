@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.auth import get_current_user, GOOGLE_CLIENT_ID
 from backend.database import init_db
-from backend.routers import manufacturers, models, health
+from backend.routers import manufacturers, models, health, scrape
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 PORT = int(os.getenv("PORT", "8080"))
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(manufacturers.router, dependencies=[Depends(get_current_user)])
 app.include_router(models.router, dependencies=[Depends(get_current_user)])
 app.include_router(health.router, dependencies=[Depends(get_current_user)])
+app.include_router(scrape.router, dependencies=[Depends(get_current_user)])
 
 
 @app.get("/api/auth/config")

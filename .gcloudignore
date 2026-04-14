@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .env
 dashboard/node_modules/
+dashboard/dist/

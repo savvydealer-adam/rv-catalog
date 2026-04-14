@@ -5,10 +5,12 @@ import { setAuthToken } from './api'
 import Overview from './pages/Overview'
 import Manufacturers from './pages/Manufacturers'
 import ManufacturerDetail from './pages/ManufacturerDetail'
+import ScrapeRuns from './pages/ScrapeRuns'
 
 const NAV = [
   { path: '/', label: 'Overview' },
   { path: '/manufacturers', label: 'Manufacturers' },
+  { path: '/scrape', label: 'Scrape Runs' },
 ]
 
 function AppShell() {
@@ -63,6 +65,7 @@ function AppShell() {
           <Route path="/" element={<Overview />} />
           <Route path="/manufacturers" element={<Manufacturers />} />
           <Route path="/manufacturers/:slug" element={<ManufacturerDetail />} />
+          <Route path="/scrape" element={<ScrapeRuns />} />
         </Routes>
       </main>
     </div>
