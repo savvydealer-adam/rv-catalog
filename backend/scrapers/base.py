@@ -83,8 +83,13 @@ class GenericScraper:
     def __init__(self, manufacturer_slug: str, base_url: str):
         self.slug = manufacturer_slug
         self.base_url = base_url.rstrip("/")
+        parsed = urlparse(base_url)
         # Normalize domain by stripping www. — many OEM sites serve at both
-        self.domain = urlparse(base_url).netloc.removeprefix("www.")
+        self.domain = parsed.netloc.removeprefix("www.")
+        # If base_url has a path (e.g. forestriverinc.com/rvs/travel-trailers/rockwood),
+        # the root for sitemap lookups is the domain, but the entry page is the path.
+        self.site_root = f"{parsed.scheme}://{parsed.netloc}"
+        self.entry_path = parsed.path.rstrip("/") or "/"
         self.config = get_config(manufacturer_slug)
 
     async def run(self, max_models: int = 30) -> dict:
@@ -143,7 +148,7 @@ class GenericScraper:
         return stats
 
     async def _discover_models(self, client: httpx.AsyncClient, limit: int) -> list[str]:
-        """Find model page URLs via brand config -> sitemap -> generic fallbacks."""
+        """Find model page URLs via entry_path -> brand config -> sitemap -> generic."""
         urls: set[str] = set()
         has_brand_config = bool(self.config.get("listing_pages"))
         force_playwright = self.config.get("force_playwright", False)
@@ -153,10 +158,18 @@ class GenericScraper:
             "/our-rvs", "/all-rvs", "/lineup", "/rv-models",
         ]
 
-        # Strategy 1: Brand-configured listing pages (when available, preferred)
-        if has_brand_config:
+        # Strategy 0: The base_url itself (crucial for brand-subpath URLs like
+        # forestriverinc.com/rvs/travel-trailers/rockwood)
+        if self.entry_path not in ("/", ""):
+            html = await self._fetch_rendered(client, self.base_url, force_playwright)
+            if html and len(html) > JS_DETECTION_THRESHOLD:
+                page_urls = await self._ai_find_model_links(self.base_url, html[:80000])
+                urls.update(page_urls)
+
+        # Strategy 1: Brand-configured listing pages
+        if not urls and has_brand_config:
             for path in listing_pages:
-                full = urljoin(self.base_url, path)
+                full = urljoin(self.site_root, path)
                 html = await self._fetch_rendered(client, full, force_playwright)
                 if html and len(html) > JS_DETECTION_THRESHOLD:
                     page_urls = await self._ai_find_model_links(full, html[:80000])
@@ -164,14 +177,14 @@ class GenericScraper:
                     if len(urls) >= limit:
                         break
 
-        # Strategy 2: sitemap.xml
+        # Strategy 2: sitemap.xml (on site_root, not base_url)
         if not urls:
             for sm_path in [
                 "/sitemap.xml", "/sitemap_index.xml", "/sitemap-models.xml",
                 "/sitemaps.xml", "/sitemap1.xml",
             ]:
                 try:
-                    resp = await client.get(urljoin(self.base_url, sm_path))
+                    resp = await client.get(urljoin(self.site_root, sm_path))
                     ct = resp.headers.get("content-type", "")
                     if resp.status_code == 200 and ("xml" in ct or resp.text.strip().startswith("<?xml")):
                         sub_sitemaps = re.findall(r"<sitemap>\s*<loc>([^<]+)</loc>", resp.text)
@@ -192,13 +205,21 @@ class GenericScraper:
         # Strategy 3: generic listing pages with AI
         if not urls:
             for path in listing_pages:
-                full = urljoin(self.base_url, path)
+                full = urljoin(self.site_root, path)
                 html = await self._fetch_rendered(client, full, force_playwright)
                 if html and len(html) > JS_DETECTION_THRESHOLD:
                     page_urls = await self._ai_find_model_links(full, html[:80000])
                     urls.update(page_urls)
                     if len(urls) >= limit:
                         break
+
+        # For sub-brand pages (e.g. rockwood on forestriverinc.com), scope URLs
+        # to those that contain the brand's entry path component
+        if has_brand_config is False and self.entry_path not in ("/", ""):
+            # entry_path's last segment is usually the brand slug
+            brand_slug = self.entry_path.rstrip("/").rsplit("/", 1)[-1]
+            if brand_slug:
+                urls = {u for u in urls if brand_slug.lower() in u.lower()}
 
         # Normalize and filter to same domain
         filtered = []
@@ -220,7 +241,7 @@ class GenericScraper:
                 else:
                     continue
             if not parsed.netloc:
-                u = urljoin(self.base_url, u)
+                u = urljoin(self.site_root, u)
             path_lower = parsed.path.lower()
             if any(x in path_lower for x in exclude_kws):
                 continue
@@ -285,22 +306,27 @@ class GenericScraper:
 
     async def _ai_find_model_links(self, page_url: str, html: str) -> list[str]:
         """Use Gemini to identify model page links from a listing page."""
-        # Strip HTML tags crudely to reduce tokens but keep href attributes
-        # Extract just anchor tags for efficiency
-        anchors = re.findall(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>([^<]{0,100})</a>', html)
-        if not anchors:
-            return []
+        # Extract anchor opening tags with their inner content (supports nested HTML)
+        anchor_iter = re.finditer(
+            r'<a\b[^>]*\bhref=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+            html, flags=re.DOTALL | re.IGNORECASE,
+        )
 
         # Build a list of (href, text) pairs, dedupe
         links_text = []
         seen = set()
-        for href, text in anchors[:200]:
-            href_clean = href.strip()
-            text_clean = re.sub(r"\s+", " ", text).strip()
-            if href_clean in seen or not text_clean or len(text_clean) < 2:
+        for match in anchor_iter:
+            href = match.group(1).strip()
+            # Strip HTML tags from inner content to get just the text
+            inner = re.sub(r"<[^>]+>", " ", match.group(2))
+            text = re.sub(r"\s+", " ", inner).strip()[:120]
+            if href in seen or not href:
                 continue
-            seen.add(href_clean)
-            links_text.append(f"{href_clean} | {text_clean}")
+            seen.add(href)
+            # Keep even textless anchors (image-only links common on model cards)
+            links_text.append(f"{href} | {text or '(no text)'}")
+            if len(links_text) >= 250:
+                break
 
         if not links_text:
             return []
