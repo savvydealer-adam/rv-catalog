@@ -18,8 +18,15 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from backend.scrapers.brand_configs import get_config
+from backend.scrapers.playwright_fetcher import render_page, PLAYWRIGHT_AVAILABLE
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+# When a fetched page's content is smaller than this, assume it's JS-rendered
+# and fall back to Playwright. Most real model pages are 30KB+.
+JS_DETECTION_THRESHOLD = 15000
 
 HTTP_HEADERS = {
     "User-Agent": (
@@ -78,6 +85,7 @@ class GenericScraper:
         self.base_url = base_url.rstrip("/")
         # Normalize domain by stripping www. — many OEM sites serve at both
         self.domain = urlparse(base_url).netloc.removeprefix("www.")
+        self.config = get_config(manufacturer_slug)
 
     async def run(self, max_models: int = 30) -> dict:
         """Main entry point. Returns stats dict."""
@@ -135,55 +143,118 @@ class GenericScraper:
         return stats
 
     async def _discover_models(self, client: httpx.AsyncClient, limit: int) -> list[str]:
-        """Find model page URLs by trying sitemap.xml + common paths."""
+        """Find model page URLs via brand config -> sitemap -> generic fallbacks."""
         urls: set[str] = set()
+        has_brand_config = bool(self.config.get("listing_pages"))
+        force_playwright = self.config.get("force_playwright", False)
 
-        # Try sitemap.xml first
-        for sm_path in ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-models.xml"]:
-            try:
-                resp = await client.get(urljoin(self.base_url, sm_path))
-                if resp.status_code == 200 and "xml" in resp.headers.get("content-type", ""):
-                    urls.update(self._parse_sitemap_for_models(resp.text))
-                    if urls:
+        listing_pages = self.config.get("listing_pages") or [
+            "/", "/models", "/rvs", "/products", "/inventory",
+            "/our-rvs", "/all-rvs", "/lineup", "/rv-models",
+        ]
+
+        # Strategy 1: Brand-configured listing pages (when available, preferred)
+        if has_brand_config:
+            for path in listing_pages:
+                full = urljoin(self.base_url, path)
+                html = await self._fetch_rendered(client, full, force_playwright)
+                if html and len(html) > JS_DETECTION_THRESHOLD:
+                    page_urls = await self._ai_find_model_links(full, html[:80000])
+                    urls.update(page_urls)
+                    if len(urls) >= limit:
                         break
-            except Exception:
-                pass
 
-        # Fallback: fetch homepage and /models page, use AI to find model links
+        # Strategy 2: sitemap.xml
         if not urls:
-            for path in ["/", "/models", "/rvs", "/products", "/inventory"]:
+            for sm_path in [
+                "/sitemap.xml", "/sitemap_index.xml", "/sitemap-models.xml",
+                "/sitemaps.xml", "/sitemap1.xml",
+            ]:
                 try:
-                    resp = await client.get(urljoin(self.base_url, path))
-                    if resp.status_code == 200:
-                        page_urls = await self._ai_find_model_links(
-                            self.base_url + path, resp.text[:50000]
-                        )
-                        urls.update(page_urls)
-                        if len(urls) >= limit:
+                    resp = await client.get(urljoin(self.base_url, sm_path))
+                    ct = resp.headers.get("content-type", "")
+                    if resp.status_code == 200 and ("xml" in ct or resp.text.strip().startswith("<?xml")):
+                        sub_sitemaps = re.findall(r"<sitemap>\s*<loc>([^<]+)</loc>", resp.text)
+                        if sub_sitemaps:
+                            for sub in sub_sitemaps[:5]:
+                                try:
+                                    r2 = await client.get(sub)
+                                    if r2.status_code == 200:
+                                        urls.update(self._parse_sitemap_for_models(r2.text))
+                                except Exception:
+                                    pass
+                        urls.update(self._parse_sitemap_for_models(resp.text))
+                        if urls:
                             break
                 except Exception:
-                    continue
+                    pass
+
+        # Strategy 3: generic listing pages with AI
+        if not urls:
+            for path in listing_pages:
+                full = urljoin(self.base_url, path)
+                html = await self._fetch_rendered(client, full, force_playwright)
+                if html and len(html) > JS_DETECTION_THRESHOLD:
+                    page_urls = await self._ai_find_model_links(full, html[:80000])
+                    urls.update(page_urls)
+                    if len(urls) >= limit:
+                        break
 
         # Normalize and filter to same domain
         filtered = []
+        exclude_extras = self.config.get("exclude_patterns", [])
+        exclude_kws = [
+            "/blog", "/news", "/press", "/dealer", "/warranty",
+            "/parts", "/service", "/careers", "/about", "/contact",
+            "/privacy", "/terms", "/login", "/sitemap", "/search",
+            "/support", "/faq", "/video", "/gallery", "/event",
+            ".pdf", ".jpg", ".png", ".webp",
+        ] + exclude_extras
         for u in urls:
             parsed = urlparse(u)
             url_domain = parsed.netloc.removeprefix("www.")
             if url_domain and url_domain != self.domain:
-                continue
+                # Allow certain sub-brand domains (e.g. cherokee-rv on forest-river)
+                if self.config.get("allow_external_domains", False):
+                    pass
+                else:
+                    continue
             if not parsed.netloc:
                 u = urljoin(self.base_url, u)
-            # Skip obvious non-model URLs
-            if any(x in u.lower() for x in [
-                "/blog", "/news", "/press", "/dealer", "/warranty",
-                "/parts", "/service", "/careers", "/about", "/contact",
-                "/privacy", "/terms", "/login", ".pdf", ".jpg", ".png"
-            ]):
+            path_lower = parsed.path.lower()
+            if any(x in path_lower for x in exclude_kws):
+                continue
+            # Also skip root page and paths with 0-1 segments that look like sections
+            if parsed.path in ("", "/"):
                 continue
             filtered.append(u)
 
         # Deduplicate and limit
         return list(dict.fromkeys(filtered))[:limit]
+
+    async def _fetch_rendered(
+        self, client: httpx.AsyncClient, url: str, force_playwright: bool = False
+    ) -> str:
+        """Fetch a page; use Playwright if forced or if httpx returns thin content."""
+        if force_playwright and PLAYWRIGHT_AVAILABLE:
+            return await render_page(url, timeout_ms=15000)
+
+        try:
+            resp = await client.get(url, timeout=20.0)
+            if resp.status_code != 200:
+                return ""
+            html = resp.text
+        except Exception:
+            return ""
+
+        # If the HTML has very little meaningful text, render with Playwright
+        if PLAYWRIGHT_AVAILABLE:
+            text_len = len(re.sub(r"<[^>]+>|\s+", " ", html).strip())
+            if text_len < 3000:
+                rendered = await render_page(url, timeout_ms=15000)
+                if rendered and len(rendered) > len(html):
+                    return rendered
+        return html
 
     def _parse_sitemap_for_models(self, xml: str) -> list[str]:
         """Extract URLs from sitemap that look like model pages."""
@@ -259,15 +330,41 @@ class GenericScraper:
     async def _extract_model(
         self, client: httpx.AsyncClient, url: str
     ) -> ExtractedModel | None:
-        """Fetch a model page and extract structured data via Gemini."""
-        try:
-            resp = await client.get(url, timeout=20.0)
-            if resp.status_code != 200:
+        """Fetch a model page and extract structured data via Gemini.
+
+        Tries httpx first; if content is thin (JS-rendered), falls back to
+        Playwright. Retries transient failures once.
+        """
+        html = ""
+        for attempt in range(2):
+            try:
+                resp = await client.get(url, timeout=20.0)
+                if resp.status_code == 200:
+                    html = resp.text
+                    break
+                elif resp.status_code in (429, 502, 503):
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                else:
+                    return None
+            except (httpx.TimeoutException, httpx.ConnectError):
+                if attempt == 0:
+                    await asyncio.sleep(1)
+                    continue
                 return None
-        except Exception:
+            except Exception:
+                return None
+
+        # If content is thin (JS-heavy SPA), render with Playwright
+        meaningful_text_len = len(re.sub(r"<[^>]+>|\s+", " ", html).strip())
+        if meaningful_text_len < 3000 and PLAYWRIGHT_AVAILABLE:
+            rendered = await render_page(url, timeout_ms=15000)
+            if rendered and len(rendered) > len(html):
+                html = rendered
+
+        if not html:
             return None
 
-        html = resp.text
         # Strip script/style content but keep structure
         html_clean = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
         html_clean = re.sub(r"<style[^>]*>.*?</style>", "", html_clean, flags=re.DOTALL)
