@@ -40,6 +40,11 @@ OLLAMA_URL = "http://127.0.0.1:11434/v1/chat/completions"
 OLLAMA_MODEL = "qwen3:32b"
 OUTPUT_PATH = Path(__file__).resolve().parent / "qwen_site_recon.json"
 
+# Ollama serves one 32B request at a time; any parallelism just queues and
+# burns our per-call timeout. Serialize Qwen calls while leaving fetch/render
+# parallel (those are network-bound and benefit from concurrency).
+_qwen_lock = asyncio.Lock()
+
 _IPROYAL_HOST = os.getenv("CD_IPROYAL_HOST", "geo.iproyal.com:12321")
 
 
@@ -123,10 +128,11 @@ Links:
         "temperature": 0.0,
         "response_format": {"type": "json_object"},
     }
-    async with httpx.AsyncClient(timeout=600.0) as client:
-        resp = await client.post(OLLAMA_URL, json=payload)
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
+    async with _qwen_lock:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            resp = await client.post(OLLAMA_URL, json=payload)
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
     content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
     content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
     match = re.search(r"\{.*\}", content, re.DOTALL)

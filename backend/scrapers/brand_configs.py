@@ -180,6 +180,171 @@ CONFIGS: dict[str, BrandConfig] = {
             "/volante",
         ],
     },
+    # --- Qwen3-proposed configs (reviewed 2026-04-16) -------------------------
+    # Aliner
+    "aliner": {
+        "listing_pages": [
+            "/all-campers",
+            "/shape/a-frame-campers",
+            "/shape/teardrop",
+            "/size/small-campers",
+            "/size/medium-campers",
+            "/size/large-campers",
+            "/series/scout",
+            "/series/ranger",
+            "/series/classic",
+            "/series/expedition",
+            "/series/evolution",
+            "/series/ascape",
+        ],
+    },
+    # Bigfoot Industries
+    "bigfoot": {
+        "listing_pages": [
+            "/rvs",
+            "/rvs/travel-trailers",
+        ],
+        "force_playwright": True,
+    },
+    # Bowlus
+    "bowlus": {
+        "listing_pages": [
+            "/available-inventory",
+            "/rivet",
+            "/endless-highways",
+        ],
+    },
+    # Coach House RV
+    "coach-house": {
+        "listing_pages": [
+            "/all-rvs",
+            "/new-rvs-for-sale",
+            "/used-rvs-for-sale",
+        ],
+    },
+    # Cruiser RV
+    "cruiser-rv": {
+        "listing_pages": [
+            "/all-brands",
+            "/find-your-rv",
+            "/view-all-rvs",
+            "/inventory",
+        ],
+    },
+    # Dynamax
+    "dynamax": {
+        "listing_pages": [
+            "/motorhomes",
+        ],
+        "force_playwright": True,
+    },
+    # EarthRoamer
+    "earthroamer": {
+        "listing_pages": [
+            "/models-sx",
+            "/sx-explore",
+            "/ltx-explore",
+        ],
+        "force_playwright": True,
+    },
+    # East to West RV
+    "east-to-west": {
+        "listing_pages": [
+            "/motorhomes",
+            "/toy-haulers",
+            "/fifth-wheels",
+            "/travel-trailers",
+        ],
+        "force_playwright": True,
+    },
+    # Genesis Supreme RV
+    "genesis-supreme": {
+        "listing_pages": [
+            "/genesis-bumper-pulls",
+        ],
+    },
+    # Hiker Trailers
+    "hiker": {
+        "listing_pages": [
+            "/product-category/ready-built-trailers",
+            "/mid-range-trailers",
+            "/mid-range-xl",
+            "/extreme-off-road",
+        ],
+        "force_playwright": True,
+    },
+    # Leisure Travel Vans
+    "leisure-travel": {
+        "listing_pages": [
+            "/products",
+            "/past-models",
+        ],
+        "force_playwright": True,
+    },
+    # Northern Lite
+    "northern-lite": {
+        "listing_pages": [
+            "/short-bed-truck-campers",
+            "/long-bed-truck-campers",
+            "/4-season-truck-campers",
+        ],
+    },
+    # Northstar Campers
+    "northstar": {
+        "listing_pages": [
+            "/hardwall-campers",
+            "/pop-up-campers",
+        ],
+    },
+    # Outdoors RV
+    "outdoors-rv": {
+        "listing_pages": [
+            "/our-rvs",
+            "/travel-trailers",
+            "/1-2-ton-towable-line",
+            "/fifth-wheels-2",
+            "/toy-haulers-2",
+        ],
+    },
+    # Prime Time Manufacturing
+    "prime-time": {
+        "listing_pages": [
+            "/fifth-wheels",
+            "/travel-trailers",
+        ],
+        "force_playwright": True,
+    },
+    # Scamp Trailers
+    "scamp": {
+        "listing_pages": [
+            "/available-now",
+            "/showroom",
+            "/showroom/trailer-layouts",
+            "/showroom/13-trailers",
+            "/showroom/16-trailers",
+            "/showroom/19-trailers",
+        ],
+        "force_playwright": True,
+    },
+    # Shasta RV
+    "shasta": {
+        "listing_pages": [
+            "/motorhomes",
+            "/toy-haulers",
+            "/fifth-wheels",
+            "/travel-trailers",
+            "/destination-trailers",
+            "/camping-trailers",
+        ],
+        "force_playwright": True,
+    },
+    # Storyteller Overland
+    "storyteller": {
+        "listing_pages": [
+            "/pages/2026-mode-vans",
+            "/pages/gxv-compare",
+        ],
+    },
 }
 
 

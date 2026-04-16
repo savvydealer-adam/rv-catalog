@@ -24,6 +24,17 @@ from backend.scrapers.playwright_fetcher import render_page, PLAYWRIGHT_AVAILABL
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
+_IPROYAL_HOST = os.getenv("CD_IPROYAL_HOST", "geo.iproyal.com:12321")
+
+
+def _iproyal_httpx_proxy() -> str | None:
+    """IPRoyal proxy URL for httpx, or None when creds absent."""
+    user = os.getenv("CD_IPROYAL_USER", "").strip()
+    pwd = os.getenv("CD_IPROYAL_PASS", "").strip()
+    if not user or not pwd:
+        return None
+    return f"http://{user}:{pwd}@{_IPROYAL_HOST}"
+
 # When a fetched page's content is smaller than this, assume it's JS-rendered
 # and fall back to Playwright. Most real model pages are 30KB+.
 JS_DETECTION_THRESHOLD = 15000
@@ -104,10 +115,18 @@ class GenericScraper:
             "errors": [],
         }
 
+        client_kwargs: dict = {
+            "headers": HTTP_HEADERS,
+            "timeout": 30.0,
+            "follow_redirects": True,
+        }
+        proxy_url = _iproyal_httpx_proxy()
+        if proxy_url:
+            client_kwargs["proxy"] = proxy_url
+            client_kwargs["trust_env"] = False
+
         try:
-            async with httpx.AsyncClient(
-                headers=HTTP_HEADERS, timeout=30.0, follow_redirects=True
-            ) as client:
+            async with httpx.AsyncClient(**client_kwargs) as client:
                 # 1. Discover model URLs
                 model_urls = await self._discover_models(client, max_models)
                 stats["models_found"] = len(model_urls)

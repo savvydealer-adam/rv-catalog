@@ -186,9 +186,18 @@ async def render_page(
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             try:
                 if wait_selector:
-                    await page.wait_for_selector(wait_selector, timeout=5000)
+                    await page.wait_for_selector(wait_selector, timeout=8000)
                 else:
-                    await page.wait_for_load_state("networkidle", timeout=8000)
+                    # Some SPAs (cherokeerv etc.) hydrate slowly; wait longer
+                    # and additionally check that some anchor tags exist.
+                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    try:
+                        await page.wait_for_function(
+                            "document.querySelectorAll('a[href]').length > 5",
+                            timeout=5000,
+                        )
+                    except Exception:
+                        pass
             except Exception:
                 pass
             html = await page.content()
