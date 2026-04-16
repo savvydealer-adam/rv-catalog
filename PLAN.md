@@ -250,3 +250,23 @@ Each scraper:
 - [ ] MCP server wrapper
 - [ ] API auth for dealer sites
 - [ ] Rate limiting, caching
+
+## Known Scraping Blockers (2026-04-16)
+
+**WAF-blocked (403 from Cloudflare/Akamai, residential IP doesn't help):**
+- heartland, cherokee-rv + all Cherokee sub-brands (arctic-wolf, grey-wolf, wolf-pup)
+- Needs: bot-header stack (Sec-Fetch headers, proper TLS fingerprint), not just IP rotation
+
+**SPA filter-UI sites (category pages load, but model cards behind JS filter):**
+- thor-motor-coach, winnebago, coachmen (existing configs point at category pages —
+  `_ai_find_model_links` returns sibling categories instead of actual models)
+- Needs: per-brand click-through or explicit model-URL lists in `brand_configs.py`
+
+**Dead / unreliable origin servers:**
+- adventurermfg.com, encorerv.com, redwood-rv.com, raborv.com (renegade): 504 gateway timeout
+- regencyrv.com: expired SSL cert
+- Action: verify domains still exist, mark as defunct or find alternate URL
+
+**No category page, individual model pages only:**
+- fleetwood, holiday-rambler, travel-lite, american-coach, host, sunset-park, braxton-creek
+- Needs: sitemap-based discovery (strategy 2 in base.py), or manual model URL list
