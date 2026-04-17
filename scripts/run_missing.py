@@ -3,9 +3,14 @@
 Uses IPRoyal automatically via base.py / playwright_fetcher.py when
 CD_IPROYAL_USER/CD_IPROYAL_PASS are set.
 
-  python scripts/run_missing.py               # all 0-model brands
+Brands flagged `defunct=1` in the manufacturers table are skipped by default
+(dead domain / expired SSL / repurposed site). Pass --include-defunct to
+force-include them if you think they've come back online.
+
+  python scripts/run_missing.py               # all 0-model, non-defunct brands
   python scripts/run_missing.py --concurrency 4
   python scripts/run_missing.py --skip renegade,redwood,encore
+  python scripts/run_missing.py --dry-run     # just print targets, don't scrape
 """
 
 from __future__ import annotations
@@ -29,13 +34,15 @@ from backend.database import get_db
 from backend.scrapers.orchestrator import scrape_manufacturer
 
 
-def load_targets(skip: set[str]) -> list[tuple[str, str]]:
+def load_targets(skip: set[str], include_defunct: bool = False) -> list[tuple[str, str]]:
     db = get_db()
-    rows = db.execute("""
+    defunct_clause = "" if include_defunct else " AND COALESCE(m.defunct, 0) = 0"
+    rows = db.execute(f"""
       SELECT m.slug, m.website
       FROM manufacturers m
       LEFT JOIN models md ON md.manufacturer_id = m.id
       WHERE m.website IS NOT NULL AND m.website != ''
+      {defunct_clause}
       GROUP BY m.id
       HAVING COUNT(md.id) = 0
       ORDER BY m.tier, m.scrape_priority
@@ -51,17 +58,30 @@ async def main():
                     help="Comma-separated slugs to skip")
     ap.add_argument("--only", default="",
                     help="Comma-separated slugs — restrict to this set")
+    ap.add_argument("--include-defunct", action="store_true",
+                    help="Include brands flagged defunct in the DB (default: skip)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Print the target list and exit without scraping")
     args = ap.parse_args()
+
+    skip = {s.strip() for s in args.skip.split(",") if s.strip()}
+    only = {s.strip() for s in args.only.split(",") if s.strip()}
+    targets = load_targets(skip, include_defunct=args.include_defunct)
+    if only:
+        targets = [t for t in targets if t[0] in only]
+
+    if args.dry_run:
+        print(f"Would scrape {len(targets)} brands "
+              f"(include_defunct={args.include_defunct}, skip={sorted(skip) or None}, "
+              f"only={sorted(only) or None}):")
+        for slug, url in targets:
+            print(f"  {slug:30s} {url}")
+        return
 
     if not os.getenv("GEMINI_API_KEY"):
         print("ERROR: GEMINI_API_KEY env var not set")
         sys.exit(1)
 
-    skip = {s.strip() for s in args.skip.split(",") if s.strip()}
-    only = {s.strip() for s in args.only.split(",") if s.strip()}
-    targets = load_targets(skip)
-    if only:
-        targets = [t for t in targets if t[0] in only]
     proxy_on = bool(os.getenv("CD_IPROYAL_USER") and os.getenv("CD_IPROYAL_PASS"))
     print(f"Scraping {len(targets)} brands (concurrency={args.concurrency}, "
           f"iproyal={'on' if proxy_on else 'off'})")

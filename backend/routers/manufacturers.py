@@ -13,6 +13,7 @@ def list_manufacturers(
     tier: str | None = Query(None, description="Filter by tier: wave_1, wave_2, wave_3, wave_4"),
     parent: str | None = Query(None, description="Filter by parent company name"),
     status: str | None = Query(None, description="Filter by scrape_status"),
+    include_defunct: bool = Query(False, description="Include manufacturers marked defunct (dead domain/expired SSL)"),
 ):
     db = get_db()
     query = "SELECT * FROM manufacturers WHERE 1=1"
@@ -27,6 +28,8 @@ def list_manufacturers(
     if status:
         query += " AND scrape_status = ?"
         params.append(status)
+    if not include_defunct:
+        query += " AND COALESCE(defunct, 0) = 0"
 
     query += " ORDER BY scrape_priority ASC"
     rows = db.execute(query, params).fetchall()
@@ -70,6 +73,12 @@ def get_manufacturer(slug: str):
 
 
 def _mfr_row(row) -> dict:
+    # row keys vary (sqlite3.Row). Pull defunct defensively so older cached
+    # rows without the column don't blow up the serializer.
+    try:
+        defunct_val = row["defunct"]
+    except (IndexError, KeyError):
+        defunct_val = 0
     return {
         "id": row["id"],
         "slug": row["slug"],
@@ -86,4 +95,5 @@ def _mfr_row(row) -> dict:
         "floorplan_count": row["floorplan_count"],
         "image_count": row["image_count"],
         "coverage_pct": row["coverage_pct"],
+        "defunct": bool(defunct_val),
     }

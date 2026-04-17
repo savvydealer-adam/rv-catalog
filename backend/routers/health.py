@@ -16,9 +16,24 @@ def overview():
 
     # Totals
     stats["total_manufacturers"] = db.execute("SELECT COUNT(*) FROM manufacturers").fetchone()[0]
+    stats["active_manufacturers"] = db.execute(
+        "SELECT COUNT(*) FROM manufacturers WHERE COALESCE(defunct, 0) = 0"
+    ).fetchone()[0]
+    stats["defunct_manufacturers"] = db.execute(
+        "SELECT COUNT(*) FROM manufacturers WHERE COALESCE(defunct, 0) = 1"
+    ).fetchone()[0]
     stats["total_models"] = db.execute("SELECT COUNT(*) FROM models").fetchone()[0]
     stats["total_floorplans"] = db.execute("SELECT COUNT(*) FROM floorplans").fetchone()[0]
     stats["total_images"] = db.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+
+    # Defunct brand list (so the dashboard can surface what's been retired)
+    stats["defunct_list"] = [
+        {"slug": r["slug"], "name": r["name"], "website": r["website"], "notes": r["notes"]}
+        for r in db.execute(
+            "SELECT slug, name, website, notes FROM manufacturers "
+            "WHERE COALESCE(defunct, 0) = 1 ORDER BY slug"
+        )
+    ]
 
     # By tier
     tiers = {}

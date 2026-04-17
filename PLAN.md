@@ -97,7 +97,8 @@ Qwen3-proposed (2026-04-16): aliner, bigfoot, bowlus, coach-house, cruiser-rv, d
   Repointed to `forestriverinc.com/rvs/cherokee-black-label` (the only live series).
   → 15 models / ~22 floorplans / 328 images.
 - cherokee-grey-wolf / arctic-wolf / wolf-pup: independent domains are dead
-  (404 or redirect to promo landers). Keep as defunct rows unless they resurface.
+  (404 or redirect to promo landers). **DEFUNCT 2026-04-17** — flagged in DB,
+  excluded from `run_missing.py` and `/api/manufacturers` by default.
 
 ### SPA filter-UI sites
 - thor-motor-coach, coachmen — `force_stealth` alone doesn't help; models are behind
@@ -105,10 +106,20 @@ Qwen3-proposed (2026-04-16): aliner, bigfoot, bowlus, coach-house, cruiser-rv, d
   in `stealth_fetch.js` or explicit model-URL seed lists.
 - winnebago — already has 22 models via pre-stealth scrape; revisit if coverage stalls.
 
-### Dead / unreliable origins
-- adventurermfg.com, encorerv.com, redwood-rv.com, raborv.com (renegade): 504 gateway timeout
-- regencyrv.com: expired SSL cert
-- Verify domains; mark defunct or find alternate URLs
+### Dead / unreliable origins -- DEFUNCT 2026-04-17
+All five flagged `defunct=1` in `manufacturers` table; excluded from
+`run_missing.py` target list and `/api/manufacturers` list endpoint by
+default (pass `--include-defunct` / `?include_defunct=true` to force-include
+if a domain resurfaces).
+
+- adventurer (adventurermfg.com): 504 gateway timeout — **DEFUNCT 2026-04-17**
+- encore (encorerv.com): 504 gateway timeout — **DEFUNCT 2026-04-17**
+- redwood (redwood-rv.com): 504 gateway timeout — **DEFUNCT 2026-04-17**
+- renegade (raborv.com): 504 gateway timeout — **DEFUNCT 2026-04-17**
+- regency (regencyrv.com): expired SSL cert — **DEFUNCT 2026-04-17**
+
+To un-defunct a brand (e.g. domain comes back online), run:
+`UPDATE manufacturers SET defunct=0, scrape_status='not_started' WHERE slug='<slug>';`
 
 ### Sites with no category page (model-pages-only)
 - fleetwood, holiday-rambler, travel-lite, american-coach, host, sunset-park, braxton-creek
