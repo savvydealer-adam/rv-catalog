@@ -6,7 +6,8 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 
 ## Current State (2026-04-17)
 
-**Coverage:** 93 manufacturers seeded, 71 with scraped data (76%), 849 models, 1,567 floorplans, 5,639 images.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (89%)**, **971 models, 1,970 floorplans, 6,950 images**.
+(10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
 
 **Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), per-brand configs with `model_path_patterns` and `force_stealth` escape hatches, **stealth fetcher** (puppeteer-real-browser, local PC, bypasses Cloudflare/Akamai without proxy).
 
@@ -130,9 +131,46 @@ if a domain resurfaces).
 To un-defunct a brand (e.g. domain comes back online), run:
 `UPDATE manufacturers SET defunct=0, scrape_status='not_started' WHERE slug='<slug>';`
 
-### Sites with no category page (model-pages-only)
-- fleetwood, holiday-rambler, travel-lite, american-coach, host, sunset-park, braxton-creek
-- Needs: sitemap-based discovery or manual model URL list
+### Sites with no category page (model-pages-only) -- RESOLVED 2026-04-17
+All cracked via `model_urls` seed lists or `force_stealth` in `brand_configs.py`:
+- fleetwood: `force_stealth` → 24 models / 77 floorplans / 480 images (Cloudflare WAF).
+- holiday-rambler: generic discovery worked → 25 models / 80 floorplans / 500 images.
+- american-coach: generic discovery worked → 6 models / 19 floorplans / 120 images.
+- travel-lite: `/rvs/<slug>/` `model_urls` seed → 2 models / 6 floorplans / 2 images.
+- host: `/product-details-<model>/` `model_urls` seed → 3 models / 3 floorplans / 24 images.
+- sunset-park: **DEFUNCT 2026-04-17** — domain parked on atom.com (for sale).
+- braxton-creek: **DEFUNCT 2026-04-17** — domain redirects to bontrageroutdoors.com (403).
+
+### Forest River CMS platform brands -- RESOLVED 2026-04-17
+
+Many OEM brands share a Forest River-owned CMS (same HTML layout, top-level
+slugs as series pages, `/<series>/<model>/<id>` detail URLs). Added explicit
+`model_urls` seeds in `brand_configs.py`:
+
+- east-to-west: 13 series seeded → 9 models / 46 floorplans / 170 images.
+- prime-time: 5 series seeded → 5 models / 31 floorplans / 99 images.
+- dynamax: 8 series seeded → 7 models / 22 floorplans / 139 images.
+- cruiser-rv: 6 `/brand/<slug>/` seeds → 5 models / 2 floorplans / 100 images.
+- coach-house: 10 `/<model>/` seeds → 10 models / 15 floorplans / 185 images.
+- northstar: 12 `/<model>/` seeds → 11 models / 11 floorplans / 208 images.
+- genesis-supreme: 16 `/<series>-new/` seeds → 15 models / 23 floorplans / 300 images.
+- storyteller: 13 `/pages/<van>` seeds → 11 models / 25 floorplans / 220 images.
+
+### Forest River sub-brand URL corrections (2026-04-17)
+
+DB URLs for 5 FR sub-brands pointed at `/rvs/<category>/<brand>` paths that
+now 404. Fixed to the live `/rvs/<brand>` format:
+- forester: 0 → 10 models / 12 floorplans / 118 images.
+- sunseeker: 0 → 10 models / 12 floorplans / 146 images.
+- georgetown: 0 → 3 models / 11 floorplans / 57 images.
+- solera: 0 → 12 models / 12 floorplans / 100 images.
+- fr3: 0 → 4 models / 4 floorplans / 59 images.
+- salem-rv: re-pointed to `/rvs/salem` → 11 models / 11 floorplans / 188 images.
+
+### Forest River parent brand (2026-04-17)
+
+Added 51 umbrella-brand series slugs as `model_urls` (those not already in
+individual brand records): 20 models / 142 floorplans / 398 images.
 
 ### Coverage enrichment (2026-04-17)
 

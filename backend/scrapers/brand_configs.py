@@ -122,7 +122,30 @@ CONFIGS: dict[str, BrandConfig] = {
             "/rvs/toy-haulers",
             "/rvs/motorhomes",
             "/rvs/destination-trailers",
-            "/rvs/park-models",
+        ],
+        "model_path_patterns": ["/rvs/"],
+        # Seed top umbrella-brand series (those without their own mfr record).
+        "model_urls": [
+            "/rvs/airelume", "/rvs/alpha-wolf", "/rvs/arctic-wolf",
+            "/rvs/aurora", "/rvs/berkshire", "/rvs/cardinal",
+            "/rvs/cascade", "/rvs/cedar-creek", "/rvs/cherokee-black-label",
+            "/rvs/columbus", "/rvs/cruise-lite", "/rvs/evo",
+            "/rvs/flagstaff-classic-travel-trailers", "/rvs/flagstaff-e-pro",
+            "/rvs/flagstaff-micro-lite", "/rvs/flagstaff-shamrock",
+            "/rvs/flagstaff-super-lite-travel-trailers",
+            "/rvs/grand-surveyor", "/rvs/grey-wolf", "/rvs/hemisphere-travel-trailers",
+            "/rvs/heritage-glen-travel-trailers", "/rvs/ibex",
+            "/rvs/impression", "/rvs/lost-pines", "/rvs/nightfall",
+            "/rvs/no-boundaries", "/rvs/ozark", "/rvs/puma", "/rvs/r-pod",
+            "/rvs/riverstone", "/rvs/rockwood-geo-pro", "/rvs/rockwood-mini-lite",
+            "/rvs/rockwood-signature-travel-trailers", "/rvs/sabre",
+            "/rvs/sandpiper-fifth-wheels", "/rvs/sandstorm",
+            "/rvs/sierra-fifth-wheels", "/rvs/solaire", "/rvs/stealth",
+            "/rvs/timberwolf", "/rvs/vengeance", "/rvs/vibe",
+            "/rvs/viking-travel-trailers", "/rvs/wildcat-travel-trailers",
+            "/rvs/wolf-pack", "/rvs/wolf-pup", "/rvs/work-and-play",
+            "/rvs/x-lite", "/rvs/xlr-boost", "/rvs/xlr-hyperlite",
+            "/rvs/xlr-nitro",
         ],
     },
     # Keystone Arcadia etc are on keystonerv.com
@@ -315,10 +338,28 @@ CONFIGS: dict[str, BrandConfig] = {
             "/entrada-m-class", "/longitude", "/takoda", "/tandara",
         ],
     },
-    # Genesis Supreme RV
+    # Genesis Supreme RV (WP site, many model lines at root slugs)
     "genesis-supreme": {
         "listing_pages": [
-            "/genesis-bumper-pulls",
+            "/genesis-bumper-pulls/",
+        ],
+        "model_urls": [
+            "/blazen-fifth-wheel-new/",
+            "/blazen-toyhauler-trailers-new/",
+            "/genesis-fifth-wheels-new/",
+            "/genesis-toyhauler-trailers-new/",
+            "/mgm-fifth-wheels-new/",
+            "/mgm-toyhauler-trailers-new/",
+            "/northland-limited-new/",
+            "/overnighter-toyhauler-trailers-new/",
+            "/ragen-fifth-wheels-new/",
+            "/ragen-toyhauler-trailers-new/",
+            "/sandsport-fifth-wheels-new/",
+            "/sandsport-toyhauler-trailers-new/",
+            "/seabreeze-limited-new/",
+            "/surfside-limited-new/",
+            "/vortex-fifth-wheels-new/",
+            "/vortex-toyhauler-trailers-new/",
         ],
     },
     # Hiker Trailers
@@ -509,6 +550,44 @@ CONFIGS: dict[str, BrandConfig] = {
         "model_path_patterns": ["/products/"],
     },
     # Taxa Outdoors: Shopify, has 3 real trailer products (cricket/mantis/woolly)
+    # Storyteller Overland (Shopify, vans under /pages/<vehicle>)
+    "storyteller": {
+        "model_urls": [
+            "/mode",
+            "/pages/2026-beast-mode-og",
+            "/pages/2026-beast-mode-xo",
+            "/pages/2026-classic-mode-og",
+            "/pages/2026-classic-mode-xo",
+            "/pages/2026-dark-mode-og",
+            "/pages/2026-dark-mode-xo",
+            "/pages/2026-mode-vans",
+            "/pages/2026-tour-mode",
+            "/pages/2027-grand-bohemian",
+            "/pages/gxv-epic",
+            "/pages/gxv-hilt",
+            "/pages/storyteller-gxv",
+        ],
+    },
+    # Host Campers (WP site, /product-details-<model>/ URLs)
+    "host": {
+        "model_urls": [
+            "/product-details-cascade/",
+            "/product-details-everest/",
+            "/product-details-mammoth/",
+            "/product-details-tahoe/",
+            "/yukon/",
+        ],
+    },
+    # Travel Lite RV (WP site, all models under /rvs/)
+    "travel-lite": {
+        "model_urls": [
+            "/rvs/rove-lite-travel-trailers/",
+            "/rvs/rove-lite-classic-lightweight-travel-trailers/",
+            "/rvs/2021-super-lite-truck-campers/",
+            "/rvs/2022-extended-stay-truck-campers/",
+            "/rvs/24sur-toy-hauler/",
+        ],
+    },
     "taxa": {
         "listing_pages": [
             "/collections/all",
