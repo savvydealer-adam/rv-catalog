@@ -193,7 +193,7 @@ CONFIGS: dict[str, BrandConfig] = {
             "/class-a-motorhomes",
             "/class-c-motorhomes",
         ],
-        "force_playwright": True,
+        "force_stealth": True,
     },
     # Gulf Stream
     "gulf-stream": {
@@ -257,29 +257,40 @@ CONFIGS: dict[str, BrandConfig] = {
             "/endless-highways",
         ],
     },
-    # Coach House RV
+    # Coach House RV (WP site, models at root slugs like /platinum/, /arriva/)
     "coach-house": {
         "listing_pages": [
-            "/all-rvs",
-            "/new-rvs-for-sale",
-            "/used-rvs-for-sale",
+            "/all-rvs/",
+            "/new-rvs-for-sale/",
+        ],
+        "model_urls": [
+            "/arriva/", "/platinum/", "/platinum-2/", "/platinum-3/",
+            "/platinum-4/", "/platinum-261-iv/", "/platinum-271-iv/",
+            "/platinum-272-iv/", "/platinum2-240/", "/platinum2-241xl/",
         ],
     },
-    # Cruiser RV
+    # Cruiser RV (brand pages live under /brand/<slug>/)
     "cruiser-rv": {
         "listing_pages": [
-            "/all-brands",
-            "/find-your-rv",
-            "/view-all-rvs",
-            "/inventory",
+            "/all-brands/",
+            "/find-your-rv/",
+            "/view-all-rvs/",
+        ],
+        "model_path_patterns": ["/brand/"],
+        "model_urls": [
+            "/brand/avenir/", "/brand/embrace/", "/brand/essence/",
+            "/brand/mpg/", "/brand/shadow-cruiser/", "/brand/stryker/",
         ],
     },
-    # Dynamax
+    # Dynamax (Forest River CMS, series pages at top-level slugs)
     "dynamax": {
         "listing_pages": [
             "/motorhomes",
         ],
-        "force_playwright": True,
+        "model_urls": [
+            "/dx3", "/dynaquest-xl", "/europa", "/europa-s", "/grand-sport",
+            "/isata-3", "/isata-5", "/isata-6",
+        ],
     },
     # EarthRoamer
     "earthroamer": {
@@ -290,7 +301,7 @@ CONFIGS: dict[str, BrandConfig] = {
         ],
         "force_playwright": True,
     },
-    # East to West RV
+    # East to West RV (Forest River CMS, series pages at top-level slugs)
     "east-to-west": {
         "listing_pages": [
             "/motorhomes",
@@ -298,7 +309,11 @@ CONFIGS: dict[str, BrandConfig] = {
             "/fifth-wheels",
             "/travel-trailers",
         ],
-        "force_playwright": True,
+        "model_urls": [
+            "/acclaim", "/ahara", "/alita", "/alta", "/blackthorn",
+            "/bravado", "/college-avenue", "/della-terra", "/entrada",
+            "/entrada-m-class", "/longitude", "/takoda", "/tandara",
+        ],
     },
     # Genesis Supreme RV
     "genesis-supreme": {
@@ -332,11 +347,16 @@ CONFIGS: dict[str, BrandConfig] = {
             "/4-season-truck-campers",
         ],
     },
-    # Northstar Campers
+    # Northstar Campers (WP site, all camper models at root slugs)
     "northstar": {
         "listing_pages": [
-            "/hardwall-campers",
-            "/pop-up-campers",
+            "/hardwall-campers/",
+            "/pop-up-campers/",
+        ],
+        "model_urls": [
+            "/10-x/", "/600ss/", "/650sc/", "/850sc/", "/gmax-600/",
+            "/gmax-650/", "/laredo-sc/", "/liberty/", "/night-hawk/",
+            "/offroada/", "/tc650/", "/wind-bandit/",
         ],
     },
     # Outdoors RV
@@ -349,13 +369,15 @@ CONFIGS: dict[str, BrandConfig] = {
             "/toy-haulers-2",
         ],
     },
-    # Prime Time Manufacturing
+    # Prime Time Manufacturing (Forest River CMS, series pages at top-level slugs)
     "prime-time": {
         "listing_pages": [
             "/fifth-wheels",
             "/travel-trailers",
         ],
-        "force_playwright": True,
+        "model_urls": [
+            "/avenger", "/crusader", "/lacrosse", "/sanibel", "/tracer",
+        ],
     },
     # Scamp Trailers
     "scamp": {

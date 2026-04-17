@@ -6,7 +6,7 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 
 ## Current State (2026-04-17)
 
-**Coverage:** 93 manufacturers seeded, 68 with scraped data (73%), 804 models, 1,405 floorplans, 5,033 images.
+**Coverage:** 93 manufacturers seeded, 71 with scraped data (76%), 849 models, 1,567 floorplans, 5,639 images.
 
 **Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), per-brand configs with `model_path_patterns` and `force_stealth` escape hatches, **stealth fetcher** (puppeteer-real-browser, local PC, bypasses Cloudflare/Akamai without proxy).
 
@@ -76,9 +76,9 @@ POST /api/scrape/{manufacturer_slug}       Trigger scrape (admin, auth required)
 3. **httpx** — default; fast, IPRoyal-routed when creds are set.
 
 ### brand_configs.py
-Knobs per entry: `listing_pages`, `model_path_patterns`, `force_playwright`, `force_stealth`, `exclude_patterns`, `allow_external_domains`.
+Knobs per entry: `listing_pages`, `model_urls`, `model_path_patterns`, `force_playwright`, `force_stealth`, `exclude_patterns`, `allow_external_domains`.
 
-Hand-curated: thor-motor-coach, winnebago, heartland (**force_stealth**), coachmen, forest-river, keystone, dutchmen, airstream, highland-ridge, cherokee-rv, alliance, brinkley, fleetwood, gulf-stream, tiffin, crossroads.
+Hand-curated: thor-motor-coach (**model_urls + force_stealth**), winnebago, heartland (**force_stealth**), coachmen (**model_urls + force_stealth**), forest-river, keystone, dutchmen, airstream, highland-ridge, cherokee-rv, alliance, brinkley, fleetwood, gulf-stream, tiffin, crossroads.
 
 Qwen3-proposed (2026-04-16): aliner, bigfoot, bowlus, coach-house, cruiser-rv, dynamax, earthroamer, east-to-west, genesis-supreme, hiker, leisure-travel, northern-lite, northstar, outdoors-rv, prime-time, scamp, shasta, storyteller.
 
@@ -101,9 +101,18 @@ Qwen3-proposed (2026-04-16): aliner, bigfoot, bowlus, coach-house, cruiser-rv, d
   excluded from `run_missing.py` and `/api/manufacturers` by default.
 
 ### SPA filter-UI sites
-- thor-motor-coach, coachmen — `force_stealth` alone doesn't help; models are behind
-  filter-UI clicks. Coachmen 0→1, Thor still 0. Needs per-brand click-through scripts
-  in `stealth_fetch.js` or explicit model-URL seed lists.
+- **thor-motor-coach, coachmen — RESOLVED 2026-04-17.** Option A (explicit model-URL
+  seed lists) via a new `model_urls` field in `BrandConfig`. When set,
+  `_discover_models` skips listing-page crawl + AI classification and feeds the URLs
+  straight to `_extract_model` (each fetched via `force_stealth`).
+  - thor-motor-coach: 0 → 38 models / 38 floorplans / 187 images (39 seed URLs
+    harvested by walking Class A/B/C/camper-van/diesel/sprinter/toy-hauler category
+    pages with puppeteer-real-browser; Nuxt hydrates `/ace`, `/hurricane`, etc.).
+  - coachmen: 1 → 30 models / 135 floorplans / 433 images (38 seed URLs harvested
+    from /motorhomes, /travel-trailers, /fifth-wheels, /toy-haulers,
+    /destination-trailers, /camping-trailers).
+  - `orchestrator.scrape_manufacturer` bumps `max_models` to `max(25, len(model_urls))`
+    so the full seed list is scraped even when it exceeds the default cap.
 - winnebago — already has 22 models via pre-stealth scrape; revisit if coverage stalls.
 
 ### Dead / unreliable origins -- DEFUNCT 2026-04-17
