@@ -6,7 +6,7 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 
 ## Current State (2026-04-17)
 
-**Coverage:** 93 manufacturers seeded, 54 with scraped data (58%), 484 models, 842 floorplans, 3,111 images.
+**Coverage:** 93 manufacturers seeded, 68 with scraped data (73%), 804 models, 1,405 floorplans, 5,033 images.
 
 **Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), per-brand configs with `model_path_patterns` and `force_stealth` escape hatches, **stealth fetcher** (puppeteer-real-browser, local PC, bypasses Cloudflare/Akamai without proxy).
 
@@ -124,6 +124,53 @@ To un-defunct a brand (e.g. domain comes back online), run:
 ### Sites with no category page (model-pages-only)
 - fleetwood, holiday-rambler, travel-lite, american-coach, host, sunset-park, braxton-creek
 - Needs: sitemap-based discovery or manual model URL list
+
+### Coverage enrichment (2026-04-17)
+
+Re-scraped 16 thin-coverage brands with tuned `brand_configs.py` entries
+(`model_path_patterns`, tighter `listing_pages`, `force_playwright` where the
+category page was SPA-rendered, `exclude_patterns` to skip `/features/`,
+`/decor/`, `/brochure/`, `/design-options` duplicate pages). All writes went
+through `INSERT OR IGNORE` so existing rows were preserved.
+
+Delta for brands touched in this run:
+
+| brand           | models         | floorplans     | images           |
+|-----------------|----------------|----------------|------------------|
+| highland-ridge  | 7 -> 12 (+5)   | 0 -> 34 (+34)  | 86 -> 144 (+58)  |
+| drv             | 5 -> 7 (+2)    | 1 -> 1 (+0)    | 32 -> 32 (+0)    |
+| happier-camper  | 11 -> 15 (+4)  | 8 -> 15 (+7)   | 28 -> 30 (+2)    |
+| roadtrek        | 5 -> 14 (+9)   | 2 -> 20 (+18)  | 8 -> 8 (+0)      |
+| airstream       | 39 -> 69 (+30) | 16 -> 33 (+17) | 20 -> 20 (+0)    |
+| lance           | 22 -> 49 (+27) | 9 -> 51 (+42)  | 37 -> 112 (+75)  |
+| newmar          | 14 -> 22 (+8)  | 7 -> 7 (+0)    | 0 -> 0 (+0)      |
+| northwood       | 6 -> 18 (+12)  | 4 -> 79 (+75)  | 44 -> 89 (+45)   |
+| taxa            | 3 -> 8 (+5)    | 2 -> 8 (+6)    | 40 -> 97 (+57)   |
+| winnebago       | 22 -> 41 (+19) | 15 -> 26 (+11) | 161 -> 293 (+132)|
+| jayco           | 25 -> 33 (+8)  | 21 -> 65 (+44) | 20 -> 20 (+0)    |
+| pleasure-way    | 11 -> 16 (+5)  | 10 -> 20 (+10) | 100 -> 100 (+0)  |
+| stealth         | 12 -> 17 (+5)  | 12 -> 19 (+7)  | 4 -> 85 (+81)    |
+| work-and-play   | 6 -> 12 (+6)   | 6 -> 12 (+6)   | 4 -> 39 (+35)    |
+| cedar-creek     | 8 -> 15 (+7)   | 8 -> 16 (+8)   | 9 -> 57 (+48)    |
+| cardinal        | 11 -> 18 (+7)  | 11 -> 20 (+9)  | 14 -> 175 (+161) |
+
+**Totals for this run: +159 models, +294 floorplans, +694 images.**
+
+Brands that did not improve on this pass and need follow-up:
+- **drv** -- `/brand/<slug>/` pages load JS-lazy floorplan carousels; Gemini
+  sees the hero copy but not the individual floorplan specs. Consider
+  `force_stealth` + higher `settle_ms`, or scrape the secondary
+  `drvsuites.wpengine.com` host which mirrors the same content without lazy
+  loading.
+- **newmar** -- `/design-options` + `/floor-plans/<id>` sub-pages still get
+  classified as models (Gemini returns the parent model name). The parent
+  `/models/<slug>/` pages don't include per-floorplan spec blocks in their
+  first-paint HTML even with Playwright. Needs per-floorplan URL seed list
+  or a two-pass extractor (series page -> floorplan URLs -> spec scrape).
+
+Runner: `scripts/enrich_coverage.py` (new). Reuses
+`orchestrator.scrape_manufacturer`; concurrency capped at 3 so we don't
+hammer Gemini / IPRoyal. DB backup at `data/rv_catalog.db.bak.20260417-1646`.
 
 ### Future
 - Cloud Run deploy with production DB

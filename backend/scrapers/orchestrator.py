@@ -33,9 +33,11 @@ async def scrape_manufacturer(slug: str, base_url: str) -> dict:
     db.commit()
     db.close()
 
-    # Run the scraper
+    # Run the scraper. Bump max_models when the brand config supplies an explicit
+    # model_urls seed list (Thor has ~39, Coachmen ~37) so all are scraped.
     scraper = GenericScraper(slug, base_url)
-    stats = await scraper.run(max_models=25)
+    seeded = len(scraper.config.get("model_urls") or [])
+    stats = await scraper.run(max_models=max(25, seeded))
 
     # Update run with results
     db = get_db()

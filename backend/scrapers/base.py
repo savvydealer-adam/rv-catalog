@@ -169,6 +169,20 @@ class GenericScraper:
 
     async def _discover_models(self, client: httpx.AsyncClient, limit: int) -> list[str]:
         """Find model page URLs via entry_path -> brand config -> sitemap -> generic."""
+        # Shortcut: brand config supplies an explicit list of model URLs
+        # (SPA filter-UI sites where category pages don't expose anchor links).
+        seed_urls = self.config.get("model_urls") or []
+        if seed_urls:
+            resolved: list[str] = []
+            seen: set[str] = set()
+            for u in seed_urls:
+                full = urljoin(self.site_root, u) if not u.startswith("http") else u
+                if full in seen:
+                    continue
+                seen.add(full)
+                resolved.append(full)
+            return resolved[:limit]
+
         urls: set[str] = set()
         has_brand_config = bool(self.config.get("listing_pages"))
         force_playwright = self.config.get("force_playwright", False)

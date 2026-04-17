@@ -10,6 +10,11 @@ from typing import TypedDict
 class BrandConfig(TypedDict, total=False):
     # Seed URLs to crawl for model discovery (category/listing pages)
     listing_pages: list[str]
+    # Explicit model-page URLs (skip discovery, feed these straight to _extract_model).
+    # Use for SPA filter-UI sites where category pages don't expose anchor links to
+    # individual models in their rendered HTML (e.g. Thor Motor Coach, Coachmen).
+    # Relative paths are joined against site_root; absolute URLs are kept as-is.
+    model_urls: list[str]
     # URL path patterns that indicate a model page (in addition to defaults)
     model_path_patterns: list[str]
     # URL path patterns to exclude (in addition to defaults)
@@ -18,19 +23,37 @@ class BrandConfig(TypedDict, total=False):
     force_playwright: bool
     # Force puppeteer-real-browser (WAF bypass, Cloudflare Turnstile, local PC only)
     force_stealth: bool
+    # Allow model URLs on a different domain than base_url (e.g. sub-brand hosted on parent site)
+    allow_external_domains: bool
 
 
 CONFIGS: dict[str, BrandConfig] = {
-    # Thor Motor Coach: models at top level like /ace, /hurricane (SPA-rendered)
+    # Thor Motor Coach: Nuxt SPA. Category pages DO expose model hrefs once rendered
+    # (/ace, /hurricane, etc.) but the link-card UI + aggressive client-side filtering
+    # trip the AI classifier. Seed the 39 known model URLs directly (harvested
+    # 2026-04-17 by walking Class A/B/C + camper-vans + diesel + sprinter + toy-hauler
+    # category pages with puppeteer-real-browser). Update list when TMC launches/retires
+    # a coach.
     "thor-motor-coach": {
-        "listing_pages": [
-            "/motorhomes/class-a-motorhomes",
-            "/motorhomes/class-c-motorhomes",
-            "/motorhomes/class-b-motorhomes",
-            "/motorhomes/camper-vans",
-            "/motorhomes/diesel-motorhomes",
-            "/motorhomes/sprinter-vans",
-            "/motorhomes/toy-haulers",
+        "model_urls": [
+            "/ace", "/aria", "/axis",
+            "/chateau", "/chateau-sprinter", "/compass",
+            "/delano",
+            "/echelon", "/echelon-sprinter",
+            "/four-winds", "/four-winds-sprinter",
+            "/gemini",
+            "/hurricane",
+            "/inception", "/inception-hd", "/indigo",
+            "/luminate",
+            "/magnitude-grand",
+            "/omni-trail", "/outlaw-class-c", "/outlaw-wild-west",
+            "/palazzo-gt", "/palladium", "/pasadena", "/pasadena-sv",
+            "/quantum", "/quantum-sprinter",
+            "/resonate", "/riviera", "/rize",
+            "/sanctuary", "/scope", "/sequence",
+            "/talavera", "/tellaro", "/tiburon", "/tranquility",
+            "/vegas",
+            "/windsport",
         ],
         "force_stealth": True,
     },
@@ -58,17 +81,36 @@ CONFIGS: dict[str, BrandConfig] = {
         "model_path_patterns": ["/brand/"],
         "force_stealth": True,
     },
-    # Coachmen: split motorhomes/towables sections
+    # Coachmen: each RV category page (/motorhomes, /travel-trailers, etc.) lists the
+    # models as top-level slugs on coachmenrv.com, but the nav/filter chrome confuses
+    # the AI classifier and httpx can't see the rendered links. Seed the model URLs
+    # directly (harvested 2026-04-17 from /motorhomes, /travel-trailers, /fifth-wheels,
+    # /toy-haulers, /destination-trailers, /camping-trailers via puppeteer-real-browser).
+    # Includes all active Coachmen + Shasta series sold under Coachmen's umbrella.
     "coachmen": {
-        "listing_pages": [
-            "/brands",
-            "/motorized",
-            "/towables",
-            "/class-a",
-            "/class-b",
-            "/class-c",
-            "/travel-trailers",
-            "/fifth-wheels",
+        "model_urls": [
+            "/adrenaline",
+            "/apex-nano", "/apex-ultra-lite",
+            "/beyond", "/brookstone",
+            "/catalina-destination-series", "/catalina-legacy-edition",
+            "/catalina-summit-series-7", "/catalina-summit-series-8",
+            "/catalina-trail-blazer",
+            "/chaparral",
+            "/clipper-rok", "/clipper-travel-trailers",
+            "/concord", "/cross-trail",
+            "/encore", "/entourage", "/euro",
+            "/freedom-express-liberty-edition", "/freedom-express-select",
+            "/freedom-express-ultra-lite",
+            "/freelander",
+            "/galleria",
+            "/leprechaun",
+            "/mirada",
+            "/northern-spirit", "/northern-spirit-bijou",
+            "/northern-spirit-dlx-&-compact", "/northern-spirit-se",
+            "/nova",
+            "/phoenix", "/pixel", "/prism", "/pursuit",
+            "/shasta", "/shasta-i-5-edition-&-compact",
+            "/sportscoach-rd", "/sportscoach-srs",
         ],
         "force_stealth": True,
     },
@@ -345,6 +387,116 @@ CONFIGS: dict[str, BrandConfig] = {
             "/pages/2026-mode-vans",
             "/pages/gxv-compare",
         ],
+    },
+    # --- Coverage enrichment configs (2026-04-17) ------------------------------
+    # DRV Suites: WordPress /brand/<slug>/ series pages
+    "drv": {
+        "listing_pages": [
+            "/brand/full-house-luxury-fifth-wheel-toy-haulers/",
+            "/brand/mobile-suites-luxury-fifth-wheels/",
+            "/brand/tradition/",
+            "/brand/elite-suites/",
+        ],
+        "model_path_patterns": ["/brand/"],
+    },
+    # Highland Ridge: series pages listed, but floorplans live under
+    # /rvs/<type>/<slug>/. Pattern-match those and force playwright for SPA cards.
+    "highland-ridge": {
+        "listing_pages": [
+            "/open-range",
+            "/olympia",
+            "/mesa-ridge",
+            "/open-range-light",
+            "/roamer",
+            "/roamer-light-duty",
+            "/range-lite",
+            "/open-range-3x",
+        ],
+        "model_path_patterns": ["/rvs/travel-trailers/", "/rvs/fifth-wheels/"],
+        "force_playwright": True,
+    },
+    # Lance: /travel-trailers/<code>/ and /truck-campers/<code>/
+    "lance": {
+        "listing_pages": [
+            "/travel-trailers",
+            "/truck-campers",
+        ],
+        "model_path_patterns": ["/travel-trailers/", "/truck-campers/"],
+        "exclude_patterns": ["/decor/", "/features/", "/gallery/"],
+    },
+    # Newmar: avoid design-options / sub-floorplan-id pages (duplicates)
+    "newmar": {
+        "listing_pages": [
+            "/models",
+            "/diesel-motorhomes",
+            "/gas-motorhomes",
+        ],
+        "model_path_patterns": ["/models/"],
+        "exclude_patterns": ["/design-options", "/floor-plans/", "/brochure"],
+        "force_playwright": True,
+    },
+    # Jayco: individual model pages under /rvs/<type>/<slug>/
+    "jayco": {
+        "listing_pages": [
+            "/rvs/travel-trailers",
+            "/rvs/fifth-wheels",
+            "/rvs/toy-haulers",
+            "/rvs/class-a-motorhomes",
+            "/rvs/class-c-motorhomes",
+            "/rvs/camping-trailers",
+        ],
+        "model_path_patterns": ["/rvs/"],
+        "force_playwright": True,
+    },
+    # Roadtrek: /models/<slug>/
+    "roadtrek": {
+        "listing_pages": [
+            "/models",
+            "/class-b-motorhomes",
+        ],
+        "model_path_patterns": ["/models/"],
+    },
+    # Pleasure-Way: /models/<slug>/
+    "pleasure-way": {
+        "listing_pages": [
+            "/models",
+        ],
+        "model_path_patterns": ["/models/"],
+    },
+    # Northwood: /travel-trailers/<series>/<code>/ and /toy-haulers/<series>/<code>/
+    "northwood": {
+        "listing_pages": [
+            "/travel-trailers",
+            "/toy-haulers",
+            "/fifth-wheels",
+            "/arctic-fox",
+            "/nash",
+            "/desert-fox",
+            "/wolf-creek",
+        ],
+        "model_path_patterns": ["/travel-trailers/", "/toy-haulers/", "/fifth-wheels/"],
+    },
+    # Happier Camper: Shopify /products/ — color variants pollute results
+    "happier-camper": {
+        "listing_pages": [
+            "/collections/all",
+            "/pages/hc1",
+            "/pages/hct",
+            "/pages/traveler",
+        ],
+        "model_path_patterns": ["/products/"],
+    },
+    # Taxa Outdoors: Shopify, has 3 real trailer products (cricket/mantis/woolly)
+    "taxa": {
+        "listing_pages": [
+            "/collections/all",
+            "/collections/trailers",
+            "/pages/cricket",
+            "/pages/mantis",
+            "/pages/woolly-bear",
+            "/pages/tigermoth",
+        ],
+        "model_path_patterns": ["/products/"],
     },
 }
 
