@@ -6,8 +6,8 @@
 | Forest River | Forest River (Berkshire Hathaway) | wave_1 | partial | 0 | 0 | 0 | https://forestriverinc.com |
 | [Jayco](manufacturers/jayco.md) | Thor Industries | wave_1 | complete | 25 | 21 | 20 | https://jayco.com |
 | [Grand Design](manufacturers/grand-design.md) | Winnebago Industries | wave_1 | complete | 36 | 73 | 93 | https://granddesignrv.com |
-| Heartland | Thor Industries | wave_1 | error | 0 | 0 | 0 | https://heartlandrvs.com |
-| Coachmen | Forest River (Berkshire Hathaway) | wave_1 | in_progress | 0 | 0 | 0 | https://coachmenrv.com |
+| [Heartland](manufacturers/heartland.md) | Thor Industries | wave_1 | complete | 8 | 25 | 20 | https://heartlandrvs.com |
+| [Coachmen](manufacturers/coachmen.md) | Forest River (Berkshire Hathaway) | wave_1 | partial | 1 | 0 | 4 | https://coachmenrv.com |
 | [Winnebago](manufacturers/winnebago.md) | Winnebago Industries | wave_1 | complete | 22 | 15 | 161 | https://winnebago.com |
 | Thor Motor Coach | Thor Industries | wave_1 | partial | 0 | 0 | 0 | https://thormotorcoach.com |
 | [Dutchmen](manufacturers/dutchmen.md) | Thor Industries | wave_2 | complete | 3 | 18 | 20 | https://dutchmen.com |
@@ -67,7 +67,7 @@
 | Adventurer | Independent | wave_4 | error | 0 | 0 | 0 | https://adventurermfg.com |
 | Regency | Independent | wave_4 | error | 0 | 0 | 0 | https://regencyrv.com |
 | Encore | Independent | wave_4 | error | 0 | 0 | 0 | https://encorerv.com |
-| Cherokee | Forest River (Berkshire Hathaway) | wave_1 | error | 0 | 0 | 0 | https://cherokeerv.com |
+| [Cherokee](manufacturers/cherokee-rv.md) | Forest River (Berkshire Hathaway) | wave_1 | complete | 15 | 20 | 252 | https://forestriverinc.com |
 | Salem | Forest River (Berkshire Hathaway) | wave_1 | error | 0 | 0 | 0 | https://forestriverinc.com/rvs/travel-trailers/salem |
 | Wildwood | Forest River (Berkshire Hathaway) | wave_1 | error | 0 | 0 | 0 | https://forestriverinc.com/rvs/travel-trailers/wildwood |
 | [Rockwood](manufacturers/rockwood.md) | Forest River (Berkshire Hathaway) | wave_2 | complete | 4 | 27 | 17 | https://forestriverinc.com/rvs/travel-trailers/rockwood |
@@ -88,9 +88,9 @@
 | Solera | Forest River (Berkshire Hathaway) | wave_3 | error | 0 | 0 | 0 | https://forestriverinc.com/rvs/motorhomes/solera |
 | FR3 | Forest River (Berkshire Hathaway) | wave_3 | error | 0 | 0 | 0 | https://forestriverinc.com/rvs/motorhomes/fr3 |
 | [XLR](manufacturers/xlr-toy-hauler.md) | Forest River (Berkshire Hathaway) | wave_3 | partial | 2 | 7 | 6 | https://forestriverinc.com/rvs/toy-haulers/xlr |
-| Arctic Wolf | Forest River (Berkshire Hathaway) | wave_2 | error | 0 | 0 | 0 | https://cherokeerv.com/arctic-wolf |
-| Grey Wolf | Forest River (Berkshire Hathaway) | wave_2 | error | 0 | 0 | 0 | https://cherokeerv.com/grey-wolf |
-| Wolf Pup | Forest River (Berkshire Hathaway) | wave_3 | error | 0 | 0 | 0 | https://cherokeerv.com/wolf-pup |
+| Arctic Wolf | Forest River (Berkshire Hathaway) | wave_2 | error | 0 | 0 | 0 | https://forestriverinc.com/rvs/travel-trailers/cherokee/arctic-wolf |
+| Grey Wolf | Forest River (Berkshire Hathaway) | wave_2 | error | 0 | 0 | 0 | https://forestriverinc.com/rvs/travel-trailers/cherokee/grey-wolf |
+| Wolf Pup | Forest River (Berkshire Hathaway) | wave_3 | error | 0 | 0 | 0 | https://forestriverinc.com/rvs/travel-trailers/cherokee/wolf-pup |
 | [No Boundaries](manufacturers/no-boundaries.md) | Forest River (Berkshire Hathaway) | wave_3 | complete | 10 | 20 | 13 | https://forestriverinc.com/rvs/travel-trailers/no-boundaries |
 | [Work and Play](manufacturers/work-and-play.md) | Forest River (Berkshire Hathaway) | wave_4 | complete | 6 | 6 | 4 | https://forestriverinc.com/rvs/toy-haulers/work-and-play |
 | [Stealth](manufacturers/stealth.md) | Forest River (Berkshire Hathaway) | wave_4 | complete | 12 | 12 | 4 | https://forestriverinc.com/rvs/toy-haulers/stealth |

@@ -29,14 +29,17 @@ rv-catalog/
   backend/          FastAPI REST API + scraping pipeline
     routers/        API route modules
     scrapers/       Per-manufacturer scraper modules
-      base.py           GenericScraper + Gemini 2.5 Flash extraction
-      brand_configs.py  34 per-brand listing_pages + force_playwright
-      playwright_fetcher.py  JS render, IPRoyal proxy, SPA wait
-      orchestrator.py   Parallel wave runner
+      base.py               GenericScraper + Gemini 2.5 Flash extraction
+      brand_configs.py      Per-brand listing_pages + model_path_patterns
+                            + force_playwright / force_stealth
+      playwright_fetcher.py JS render, IPRoyal proxy, SPA wait
+      stealth_fetcher.py    Bridge to scripts/stealth/ for WAF bypass
+      orchestrator.py       Parallel wave runner
   dashboard/        React/Vite admin dashboard (coverage monitor)
   mcp/              MCP server wrapper (for Claude Code access)
   data/             SQLite databases
   scripts/          Seed scripts, scrapers, recon tools
+    stealth/        Node project: puppeteer-real-browser CLI (stealth_fetch.js)
 ```
 
 **Deployment:** Cloud Run (`savvydealer-website` project), service name `rv-catalog`
@@ -62,27 +65,31 @@ POST /api/scrape/{manufacturer_slug}       Trigger scrape (admin, auth required)
 ## Scraping Pipeline
 
 ### How it works
-1. `_discover_models` — tries brand_configs listing_pages, then sitemap.xml, then generic paths
-2. `_ai_find_model_links` — Gemini classifies anchor tags as model-page links vs. category/nav
-3. `_extract_model` — fetches each URL (httpx → Playwright fallback), Gemini extracts structured JSON
+1. `_discover_models` — tries base_url, brand_configs listing_pages, then sitemap.xml, then generic paths
+2. `_pattern_match_links` + `_ai_find_model_links` — pattern-based extraction supplements Gemini classification of anchor tags
+3. `_extract_model` — fetches each URL (httpx → stealth/Playwright fallback), Gemini extracts structured JSON (accepts series pages with multiple floorplans as one model)
 4. `_persist` — stores models + floorplans + images in SQLite
 
-### Proxy layer
-IPRoyal rotating-residential (NO sticky sessions — bare `user:pass@geo.iproyal.com:12321` auth only, any username suffix → HTTP 407). Shared credentials with competitive-dashboard via GCP Secret Manager (`iproyal-proxy-user`/`iproyal-proxy-pass`).
+### Fetch layers (priority order)
+1. **Stealth** — `force_stealth: True` or httpx 403 fallback. Calls `scripts/stealth/stealth_fetch.js` (puppeteer-real-browser) on the local PC. No proxy; real Chrome + residential IP bypass Cloudflare/Akamai WAF fingerprinting. Slow (~15-30s/page); batch only.
+2. **Playwright + IPRoyal** — `force_playwright: True` or thin-content fallback. IPRoyal rotating-residential (NO sticky sessions — bare `user:pass@geo.iproyal.com:12321` auth only, any username suffix → HTTP 407). Shared creds with competitive-dashboard via GCP Secret Manager (`iproyal-proxy-user`/`iproyal-proxy-pass`).
+3. **httpx** — default; fast, IPRoyal-routed when creds are set.
 
-### brand_configs.py (34 entries)
-Hand-curated: thor-motor-coach, winnebago, heartland, coachmen, forest-river, keystone, dutchmen, airstream, highland-ridge, cherokee-rv, alliance, brinkley, fleetwood, gulf-stream, tiffin, crossroads.
+### brand_configs.py
+Knobs per entry: `listing_pages`, `model_path_patterns`, `force_playwright`, `force_stealth`, `exclude_patterns`, `allow_external_domains`.
+
+Hand-curated: thor-motor-coach, winnebago, heartland (**force_stealth**), coachmen, forest-river, keystone, dutchmen, airstream, highland-ridge, cherokee-rv, alliance, brinkley, fleetwood, gulf-stream, tiffin, crossroads.
 
 Qwen3-proposed (2026-04-16): aliner, bigfoot, bowlus, coach-house, cruiser-rv, dynamax, earthroamer, east-to-west, genesis-supreme, hiker, leisure-travel, northern-lite, northstar, outdoors-rv, prime-time, scamp, shasta, storyteller.
 
 ## Next Steps
 
-### Critical: Fix model discovery hit rate
-Only 4/26 new brands produced models on first scrape. Root cause: `_ai_find_model_links` confuses category pages for model pages. Options:
-1. Add URL-depth heuristic (model URL depth > listing_page depth)
-2. Use sitemap.xml more aggressively (strategy 2) before AI link classification
-3. Add explicit `model_urls` lists to brand_configs for stubborn sites
-4. Two-pass discovery: first pass finds category links, second pass follows them to find model links
+### Model discovery hit rate (ongoing)
+`_pattern_match_links` (added 2026-04-17) now supplements the Gemini AI classifier — fixed Heartland where Gemini was dropping valid `/brand/<slug>/` URLs. For stubborn sites still returning 0, options:
+1. Add `model_path_patterns` entries to brand_configs.
+2. Add URL-depth heuristic (model URL depth > listing_page depth).
+3. Use sitemap.xml more aggressively (strategy 2) before AI link classification.
+4. Two-pass discovery: first pass finds category links, second pass follows to find models.
 
 ### WAF-blocked brands -- RESOLVED 2026-04-17
 - heartland: `force_stealth` → 8 models / 25 floorplans / 160 images.
