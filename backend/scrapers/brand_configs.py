@@ -452,15 +452,29 @@ CONFIGS: dict[str, BrandConfig] = {
         ],
     },
     # --- Coverage enrichment configs (2026-04-17) ------------------------------
-    # DRV Suites: WordPress /brand/<slug>/ series pages
+    # DRV Suites: WordPress. Per-floorplan pages live at /rv-model/<code>/ but the
+    # /brand/<slug>/ series pages lazy-load floorplan cards (no anchor hrefs in
+    # server HTML even under stealth). Seed the 14 live /rv-model/ URLs harvested
+    # from /rv-model-sitemap.xml (2026-04-17). Each URL is one floorplan with
+    # real specs (length, GVWR, dry weight, slides). Stealth bypasses WAF.
     "drv": {
-        "listing_pages": [
-            "/brand/full-house-luxury-fifth-wheel-toy-haulers/",
-            "/brand/mobile-suites-luxury-fifth-wheels/",
-            "/brand/tradition/",
-            "/brand/elite-suites/",
+        "model_urls": [
+            "/rv-model/jx450-drv-luxury-suites-full-house-toy-hauler/",
+            "/rv-model/lx455/",
+            "/rv-model/ms-36rssb3/",
+            "/rv-model/ms-39dbrs3/",
+            "/rv-model/ms-40kssb4/",
+            "/rv-model/ms-41fkmb/",
+            "/rv-model/ms-41fkrb/",
+            "/rv-model/ms-41rkdb/",
+            "/rv-model/ms-houston/",
+            "/rv-model/ms-manhatn/",
+            "/rv-model/ms-nashvil/",
+            "/rv-model/ms-nashville/",
+            "/rv-model/ms-orlando/",
+            "/rv-model/mx450-drv-suites/",
         ],
-        "model_path_patterns": ["/brand/"],
+        "force_stealth": True,
     },
     # Highland Ridge: series pages listed, but floorplans live under
     # /rvs/<type>/<slug>/. Pattern-match those and force playwright for SPA cards.
@@ -487,16 +501,82 @@ CONFIGS: dict[str, BrandConfig] = {
         "model_path_patterns": ["/travel-trailers/", "/truck-campers/"],
         "exclude_patterns": ["/decor/", "/features/", "/gallery/"],
     },
-    # Newmar: avoid design-options / sub-floorplan-id pages (duplicates)
+    # Newmar: parent /models/<slug>/2026-<slug> pages list per-floorplan cards
+    # that lazy-load — even under Playwright/stealth the AI classifier can't
+    # find them reliably. Each coach has per-floorplan detail pages at
+    # /models/<slug>/2026-<slug>/floor-plans/<code> with full specs (length,
+    # GVWR, slide count, bedroom). Seed the 65 live floorplan URLs harvested
+    # 2026-04-17 from each 2026 series page via stealth. Update the list when
+    # Newmar launches/retires a coach or rolls to a new model year.
     "newmar": {
-        "listing_pages": [
-            "/models",
-            "/diesel-motorhomes",
-            "/gas-motorhomes",
+        "model_urls": [
+            "/models/bay-star-sport/2026-bay-star-sport/floor-plans/2813",
+            "/models/bay-star-sport/2026-bay-star-sport/floor-plans/3014",
+            "/models/bay-star-sport/2026-bay-star-sport/floor-plans/3225",
+            "/models/bay-star/2026-bay-star/floor-plans/3114",
+            "/models/bay-star/2026-bay-star/floor-plans/3225",
+            "/models/bay-star/2026-bay-star/floor-plans/3609",
+            "/models/bay-star/2026-bay-star/floor-plans/3626",
+            "/models/bay-star/2026-bay-star/floor-plans/3629",
+            "/models/bay-star/2026-bay-star/floor-plans/3811",
+            "/models/bay-star/2026-bay-star/floor-plans/3826",
+            "/models/canyon-star/2026-canyon-star/floor-plans/3947",
+            "/models/dutch-star/2026-dutch-star/floor-plans/3836",
+            "/models/dutch-star/2026-dutch-star/floor-plans/4071",
+            "/models/dutch-star/2026-dutch-star/floor-plans/4081",
+            "/models/dutch-star/2026-dutch-star/floor-plans/4311",
+            "/models/dutch-star/2026-dutch-star/floor-plans/4325",
+            "/models/dutch-star/2026-dutch-star/floor-plans/4340",
+            "/models/dutch-star/2026-dutch-star/floor-plans/4369",
+            "/models/dutch-star/2026-dutch-star/floor-plans/4370",
+            "/models/essex/2026-essex/floor-plans/4521",
+            "/models/essex/2026-essex/floor-plans/4551",
+            "/models/essex/2026-essex/floor-plans/4569",
+            "/models/essex/2026-essex/floor-plans/4595",
+            "/models/freedom-aire/2026-freedom-aire/floor-plans/2515",
+            "/models/grand-star/2026-grand-star/floor-plans/3444",
+            "/models/grand-star/2026-grand-star/floor-plans/3940",
+            "/models/grand-star/2026-grand-star/floor-plans/3948",
+            "/models/king-aire/2026-king-aire/floor-plans/4521",
+            "/models/king-aire/2026-king-aire/floor-plans/4531",
+            "/models/king-aire/2026-king-aire/floor-plans/4540",
+            "/models/king-aire/2026-king-aire/floor-plans/4596",
+            "/models/london-aire/2026-london-aire/floor-plans/4540",
+            "/models/london-aire/2026-london-aire/floor-plans/4551",
+            "/models/london-aire/2026-london-aire/floor-plans/4569",
+            "/models/london-aire/2026-london-aire/floor-plans/4595",
+            "/models/mountain-aire/2026-mountain-aire/floor-plans/3823",
+            "/models/mountain-aire/2026-mountain-aire/floor-plans/3825",
+            "/models/mountain-aire/2026-mountain-aire/floor-plans/4118",
+            "/models/mountain-aire/2026-mountain-aire/floor-plans/4551",
+            "/models/new-aire/2026-new-aire/floor-plans/3543",
+            "/models/new-aire/2026-new-aire/floor-plans/3545",
+            "/models/new-aire/2026-new-aire/floor-plans/3547",
+            "/models/northern-star/2026-northern-star/floor-plans/3418",
+            "/models/northern-star/2026-northern-star/floor-plans/3709",
+            "/models/northern-star/2026-northern-star/floor-plans/4011",
+            "/models/northern-star/2026-northern-star/floor-plans/4037",
+            "/models/summit-aire/2026-summit-aire/floor-plans/4505",
+            "/models/summit-aire/2026-summit-aire/floor-plans/4540",
+            "/models/super-star/2026-super-star/floor-plans/3731",
+            "/models/super-star/2026-super-star/floor-plans/4040",
+            "/models/super-star/2026-super-star/floor-plans/4059",
+            "/models/super-star/2026-super-star/floor-plans/4061",
+            "/models/super-star/2026-super-star/floor-plans/4140",
+            "/models/super-star/2026-super-star/floor-plans/4159",
+            "/models/super-star/2026-super-star/floor-plans/4161",
+            "/models/supreme-aire/2026-supreme-aire/floor-plans/3827",
+            "/models/supreme-aire/2026-supreme-aire/floor-plans/4129",
+            "/models/supreme-aire/2026-supreme-aire/floor-plans/4341",
+            "/models/supreme-aire/2026-supreme-aire/floor-plans/4505",
+            "/models/supreme-aire/2026-supreme-aire/floor-plans/4540",
+            "/models/ventana/2026-ventana/floor-plans/3512",
+            "/models/ventana/2026-ventana/floor-plans/3809",
+            "/models/ventana/2026-ventana/floor-plans/4037",
+            "/models/ventana/2026-ventana/floor-plans/4340",
+            "/models/ventana/2026-ventana/floor-plans/4369",
         ],
-        "model_path_patterns": ["/models/"],
-        "exclude_patterns": ["/design-options", "/floor-plans/", "/brochure"],
-        "force_playwright": True,
+        "force_stealth": True,
     },
     # Jayco: individual model pages under /rvs/<type>/<slug>/
     "jayco": {

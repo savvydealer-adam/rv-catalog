@@ -6,7 +6,7 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 
 ## Current State (2026-04-17)
 
-**Coverage:** 93 manufacturers seeded, **83 with scraped data (89%)**, **971 models, 1,970 floorplans, 6,950 images**.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (89%)**, **1,020 models, 2,115 floorplans, 8,816 images**.
 (10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
 
 **Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), per-brand configs with `model_path_patterns` and `force_stealth` escape hatches, **stealth fetcher** (puppeteer-real-browser, local PC, bypasses Cloudflare/Akamai without proxy).
@@ -203,21 +203,39 @@ Delta for brands touched in this run:
 
 **Totals for this run: +159 models, +294 floorplans, +694 images.**
 
-Brands that did not improve on this pass and need follow-up:
-- **drv** -- `/brand/<slug>/` pages load JS-lazy floorplan carousels; Gemini
-  sees the hero copy but not the individual floorplan specs. Consider
-  `force_stealth` + higher `settle_ms`, or scrape the secondary
-  `drvsuites.wpengine.com` host which mirrors the same content without lazy
-  loading.
-- **newmar** -- `/design-options` + `/floor-plans/<id>` sub-pages still get
-  classified as models (Gemini returns the parent model name). The parent
-  `/models/<slug>/` pages don't include per-floorplan spec blocks in their
-  first-paint HTML even with Playwright. Needs per-floorplan URL seed list
-  or a two-pass extractor (series page -> floorplan URLs -> spec scrape).
-
 Runner: `scripts/enrich_coverage.py` (new). Reuses
 `orchestrator.scrape_manufacturer`; concurrency capped at 3 so we don't
 hammer Gemini / IPRoyal. DB backup at `data/rv_catalog.db.bak.20260417-1646`.
+
+### newmar + drv follow-up (2026-04-17, round 3)
+
+Both thin brands cracked via explicit `model_urls` seeds — same pattern as
+thor-motor-coach / coachmen. Lazy-loaded floorplan carousels on the parent
+series pages were never going to surface specs to Gemini, so we skip them
+entirely and feed per-floorplan URLs straight to `_extract_model`.
+
+- **newmar**: harvested 65 `/models/<slug>/2026-<slug>/floor-plans/<code>`
+  URLs across all 16 active 2026 coaches via `scripts/harvest_newmar_floorplans.py`
+  (walks each series page under stealth, regex-grabs `/floor-plans/\d+` hrefs).
+  Seeded those URLs + `force_stealth: True` in `brand_configs.py`.
+  Before: 22 models / 7 floorplans / 0 images.
+  After:  **23 models / 69 floorplans / 0 images (+62 fp).**
+  Gemini groups multiple floorplan URLs under the same parent series (Dutch
+  Star → 8 fp, Super Star → 7 fp, Bay Star → 7 fp, Essex → 4 fp, etc.) via
+  `INSERT OR IGNORE`, so the row count stays bounded while the floorplan
+  count climbs. Zero images: Newmar serves `<img src="">` without extensions
+  (CDN/dynamic URLs), so `_extract_image_urls` filters them out.
+- **drv**: `/brand/<slug>/` series pages lazy-load floorplan cards (no anchor
+  hrefs in server HTML even under stealth, confirmed by grepping the 687 KB
+  rendered output). Per-floorplan pages live at `/rv-model/<code>/` and were
+  fully harvestable from `drvsuites.com/rv-model-sitemap.xml` (Yoast). Seeded
+  14 live `/rv-model/` URLs + `force_stealth: True`. Each page contains one
+  floorplan with real dry-weight / GVWR / slides / bedroom specs.
+  Before: 7 models / 1 floorplan / 32 images.
+  After:  **19 models / 12 floorplans / 272 images (+11 fp, +240 img).**
+
+Both fixes are same-shape as existing `model_urls` configs; no base.py
+changes required. DB backup at `data/rv_catalog.db.bak.newmar-drv-20260417-1932`.
 
 ### Future
 - Cloud Run deploy with production DB
