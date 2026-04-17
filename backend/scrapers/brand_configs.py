@@ -16,6 +16,8 @@ class BrandConfig(TypedDict, total=False):
     exclude_patterns: list[str]
     # Force Playwright rendering for this brand (JS-heavy site)
     force_playwright: bool
+    # Force puppeteer-real-browser (WAF bypass, Cloudflare Turnstile, local PC only)
+    force_stealth: bool
 
 
 CONFIGS: dict[str, BrandConfig] = {
@@ -30,7 +32,7 @@ CONFIGS: dict[str, BrandConfig] = {
             "/motorhomes/sprinter-vans",
             "/motorhomes/toy-haulers",
         ],
-        "force_playwright": True,
+        "force_stealth": True,
     },
     # Winnebago: models at /motorhomes/<type>/<model>
     "winnebago": {
@@ -44,15 +46,17 @@ CONFIGS: dict[str, BrandConfig] = {
         ],
         "force_playwright": True,
     },
-    # Heartland: models under /travel-trailers/, /fifth-wheels/, /toy-haulers/
+    # Heartland: WordPress site behind Cloudflare, categories at /rv-type/<cat>/,
+    # sub-brand pages at /brand/<slug>/ (each sub-brand page lists its floorplans)
     "heartland": {
         "listing_pages": [
-            "/travel-trailers",
-            "/fifth-wheels",
-            "/toy-haulers",
-            "/destination-trailers",
+            "/rv-type/travel-trailers/",
+            "/rv-type/fifth-wheels/",
+            "/rv-type/toy-haulers/",
+            "/all-brands/",
         ],
-        "force_playwright": True,
+        "model_path_patterns": ["/brand/"],
+        "force_stealth": True,
     },
     # Coachmen: split motorhomes/towables sections
     "coachmen": {
@@ -66,7 +70,7 @@ CONFIGS: dict[str, BrandConfig] = {
             "/travel-trailers",
             "/fifth-wheels",
         ],
-        "force_playwright": True,
+        "force_stealth": True,
     },
     # Forest River corporate: each division has its own subtree
     "forest-river": {
@@ -114,16 +118,13 @@ CONFIGS: dict[str, BrandConfig] = {
             "/roamer",
         ],
     },
-    # Cherokee RV brands
+    # Cherokee family — migrated off cherokeerv.com (now a campground site) to
+    # Forest River. Only "Cherokee Black Label" has a live series page as of
+    # 2026-04-17; grey-wolf / arctic-wolf / wolf-pup domains return 404. Scrape
+    # the Black Label series page and pattern-match floorplan URLs.
     "cherokee-rv": {
-        "listing_pages": [
-            "/models",
-            "/grey-wolf",
-            "/arctic-wolf",
-            "/wolf-pup",
-            "/alpha-wolf",
-            "/black-label",
-        ],
+        "listing_pages": ["/rvs/cherokee-black-label"],
+        "model_path_patterns": ["/rvs/cherokee-black-label/"],
     },
     # Alliance RV
     "alliance": {

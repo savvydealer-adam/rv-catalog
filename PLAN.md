@@ -6,9 +6,15 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 
 ## Current State (2026-04-17)
 
-**Coverage:** 93 manufacturers seeded, 51 with scraped data (55%), 460 models, 797 floorplans, 2,835 images.
+**Coverage:** 93 manufacturers seeded, 54 with scraped data (58%), 484 models, 842 floorplans, 3,111 images.
 
-**Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), 34 brand configs (16 hand-curated + 18 Qwen-proposed).
+**Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), per-brand configs with `model_path_patterns` and `force_stealth` escape hatches, **stealth fetcher** (puppeteer-real-browser, local PC, bypasses Cloudflare/Akamai without proxy).
+
+**Stealth stack (2026-04-17):**
+- `scripts/stealth/stealth_fetch.js` -- puppeteer-real-browser CLI (rebrowser-puppeteer-core + ghost-cursor + Turnstile auto-solve). Non-headless Chrome on local PC; residential IP + real Chrome fingerprint bypass WAF fingerprinting. No proxy.
+- `backend/scrapers/stealth_fetcher.py` -- subprocess adapter; `force_stealth: True` in `brand_configs.py` routes a brand's fetches through it. Also auto-falls-back from httpx 403 → stealth.
+- Node deps isolated in `scripts/stealth/package.json` (puppeteer-real-browser 1.4.4).
+- **Proven:** heartland (Cloudflare WAF) went 0 -> 8 models / 25 floorplans / 160 images.
 
 **Scripts:**
 - `scripts/run_scraper.py` -- single brand or wave
@@ -78,13 +84,19 @@ Only 4/26 new brands produced models on first scrape. Root cause: `_ai_find_mode
 3. Add explicit `model_urls` lists to brand_configs for stubborn sites
 4. Two-pass discovery: first pass finds category links, second pass follows them to find model links
 
-### WAF-blocked brands (403 Cloudflare/Akamai)
-- heartland, cherokee-rv + sub-brands (arctic-wolf, grey-wolf, wolf-pup)
-- Residential IP alone insufficient. Needs: full bot-header stack (Sec-Fetch-*, proper TLS fingerprint, sec-ch-ua)
+### WAF-blocked brands -- RESOLVED 2026-04-17
+- heartland: `force_stealth` → 8 models / 25 floorplans / 160 images.
+- cherokee-rv: old `cherokeerv.com` domain was repurposed (now a campground site).
+  Repointed to `forestriverinc.com/rvs/cherokee-black-label` (the only live series).
+  → 15 models / ~22 floorplans / 328 images.
+- cherokee-grey-wolf / arctic-wolf / wolf-pup: independent domains are dead
+  (404 or redirect to promo landers). Keep as defunct rows unless they resurface.
 
 ### SPA filter-UI sites
-- thor-motor-coach, winnebago, coachmen — category pages load but model cards behind JS filter/interaction
-- Needs: per-brand Playwright click-through or explicit model-URL seed lists
+- thor-motor-coach, coachmen — `force_stealth` alone doesn't help; models are behind
+  filter-UI clicks. Coachmen 0→1, Thor still 0. Needs per-brand click-through scripts
+  in `stealth_fetch.js` or explicit model-URL seed lists.
+- winnebago — already has 22 models via pre-stealth scrape; revisit if coverage stalls.
 
 ### Dead / unreliable origins
 - adventurermfg.com, encorerv.com, redwood-rv.com, raborv.com (renegade): 504 gateway timeout

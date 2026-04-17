@@ -20,6 +20,7 @@ import httpx
 
 from backend.scrapers.brand_configs import get_config
 from backend.scrapers.playwright_fetcher import render_page, PLAYWRIGHT_AVAILABLE
+from backend.scrapers.stealth_fetcher import stealth_fetch, stealth_available
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -171,6 +172,7 @@ class GenericScraper:
         urls: set[str] = set()
         has_brand_config = bool(self.config.get("listing_pages"))
         force_playwright = self.config.get("force_playwright", False)
+        force_stealth = self.config.get("force_stealth", False)
 
         listing_pages = self.config.get("listing_pages") or [
             "/", "/models", "/rvs", "/products", "/inventory",
@@ -180,8 +182,11 @@ class GenericScraper:
         # Strategy 0: The base_url itself (crucial for brand-subpath URLs like
         # forestriverinc.com/rvs/travel-trailers/rockwood)
         if self.entry_path not in ("/", ""):
-            html = await self._fetch_rendered(client, self.base_url, force_playwright)
+            html = await self._fetch_rendered(
+                client, self.base_url, force_playwright, force_stealth
+            )
             if html and len(html) > JS_DETECTION_THRESHOLD:
+                urls.update(self._pattern_match_links(self.base_url, html))
                 page_urls = await self._ai_find_model_links(self.base_url, html[:80000])
                 urls.update(page_urls)
 
@@ -189,8 +194,11 @@ class GenericScraper:
         if not urls and has_brand_config:
             for path in listing_pages:
                 full = urljoin(self.site_root, path)
-                html = await self._fetch_rendered(client, full, force_playwright)
+                html = await self._fetch_rendered(
+                    client, full, force_playwright, force_stealth
+                )
                 if html and len(html) > JS_DETECTION_THRESHOLD:
+                    urls.update(self._pattern_match_links(full, html))
                     page_urls = await self._ai_find_model_links(full, html[:80000])
                     urls.update(page_urls)
                     if len(urls) >= limit:
@@ -225,7 +233,9 @@ class GenericScraper:
         if not urls:
             for path in listing_pages:
                 full = urljoin(self.site_root, path)
-                html = await self._fetch_rendered(client, full, force_playwright)
+                html = await self._fetch_rendered(
+                    client, full, force_playwright, force_stealth
+                )
                 if html and len(html) > JS_DETECTION_THRESHOLD:
                     page_urls = await self._ai_find_model_links(full, html[:80000])
                     urls.update(page_urls)
@@ -273,22 +283,34 @@ class GenericScraper:
         return list(dict.fromkeys(filtered))[:limit]
 
     async def _fetch_rendered(
-        self, client: httpx.AsyncClient, url: str, force_playwright: bool = False
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        force_playwright: bool = False,
+        force_stealth: bool = False,
     ) -> str:
-        """Fetch a page; use Playwright if forced or if httpx returns thin content."""
+        """Fetch a page. Priority: stealth (WAF bypass) > playwright > httpx."""
+        if force_stealth and stealth_available():
+            return await stealth_fetch(url, networkidle=True, settle_ms=2000)
+
         if force_playwright and PLAYWRIGHT_AVAILABLE:
             return await render_page(url, timeout_ms=15000)
 
         try:
             resp = await client.get(url, timeout=20.0)
-            if resp.status_code != 200:
-                return ""
-            html = resp.text
+            status = resp.status_code
+            html = resp.text if status == 200 else ""
         except Exception:
-            return ""
+            status, html = 0, ""
 
-        # If the HTML has very little meaningful text, render with Playwright
-        if PLAYWRIGHT_AVAILABLE:
+        # WAF block (403) or similar — try stealth if available
+        if (status in (0, 403, 429, 503) or not html) and stealth_available():
+            rendered = await stealth_fetch(url, networkidle=True, settle_ms=2000)
+            if rendered and len(rendered) > len(html):
+                return rendered
+
+        # Thin content — fall back to Playwright
+        if html and PLAYWRIGHT_AVAILABLE:
             text_len = len(re.sub(r"<[^>]+>|\s+", " ", html).strip())
             if text_len < 3000:
                 rendered = await render_page(url, timeout_ms=15000)
@@ -322,6 +344,29 @@ class GenericScraper:
             if any(kw in path for kw in model_kws):
                 candidates.append(url)
         return candidates
+
+    def _pattern_match_links(self, page_url: str, html: str) -> list[str]:
+        """Return all links matching the brand's model_path_patterns.
+
+        Skipped when the config has no patterns. Complements the AI classifier
+        for sites where the AI is overly conservative (e.g. Heartland where
+        each model *series* lives under /brand/<slug>/).
+        """
+        patterns = self.config.get("model_path_patterns") or []
+        if not patterns:
+            return []
+        hrefs = re.findall(r'href=["\']([^"\']+)["\']', html)
+        results = []
+        seen = set()
+        for href in hrefs:
+            full = urljoin(page_url, href.strip())
+            if full in seen:
+                continue
+            seen.add(full)
+            path_lower = urlparse(full).path.lower()
+            if any(pat.lower() in path_lower for pat in patterns):
+                results.append(full)
+        return results
 
     async def _ai_find_model_links(self, page_url: str, html: str) -> list[str]:
         """Use Gemini to identify model page links from a listing page."""
@@ -380,25 +425,41 @@ class GenericScraper:
         Tries httpx first; if content is thin (JS-rendered), falls back to
         Playwright. Retries transient failures once.
         """
+        force_stealth = self.config.get("force_stealth", False)
+
         html = ""
-        for attempt in range(2):
-            try:
-                resp = await client.get(url, timeout=20.0)
-                if resp.status_code == 200:
-                    html = resp.text
-                    break
-                elif resp.status_code in (429, 502, 503):
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                else:
+        if force_stealth and stealth_available():
+            html = await stealth_fetch(url, networkidle=True, settle_ms=1500)
+        else:
+            last_status = 0
+            for attempt in range(2):
+                try:
+                    resp = await client.get(url, timeout=20.0)
+                    last_status = resp.status_code
+                    if resp.status_code == 200:
+                        html = resp.text
+                        break
+                    elif resp.status_code in (429, 502, 503):
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    elif resp.status_code == 403:
+                        # WAF — break out and try stealth below
+                        break
+                    else:
+                        return None
+                except (httpx.TimeoutException, httpx.ConnectError):
+                    if attempt == 0:
+                        await asyncio.sleep(1)
+                        continue
                     return None
-            except (httpx.TimeoutException, httpx.ConnectError):
-                if attempt == 0:
-                    await asyncio.sleep(1)
-                    continue
-                return None
-            except Exception:
-                return None
+                except Exception:
+                    return None
+
+            # WAF-blocked: try stealth if available
+            if last_status == 403 and stealth_available():
+                rendered = await stealth_fetch(url, networkidle=True, settle_ms=1500)
+                if rendered:
+                    html = rendered
 
         # If content is thin (JS-heavy SPA), render with Playwright
         meaningful_text_len = len(re.sub(r"<[^>]+>|\s+", " ", html).strip())
@@ -444,7 +505,12 @@ Return a JSON object with these fields (use null for unknown):
   - gvwr_lbs (int)
   - msrp_usd (int)
 
-If the page is NOT a single model page (e.g. it's a category listing), return null.
+This page may represent a single model/trim OR a product line/series with multiple
+floorplans (common on OEM sites — e.g. "Bighorn Fifth Wheel" is a series that contains
+floorplan variants like 33CX, 37BL). Extract it as ONE model with the floorplans listed.
+Only return null if the page is a top-level navigation/category listing that shows
+multiple DIFFERENT product lines (not floorplans of the same series), an about/blog/
+dealer page, or otherwise has no model-specific content.
 
 HTML content:
 {html_clean}
