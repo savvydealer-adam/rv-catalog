@@ -4,10 +4,28 @@
 
 A standalone service that owns all RV manufacturer, model, and floorplan data. Dealer websites (STL RV, future sites) call this API instead of maintaining their own knowledge bases. Includes an admin dashboard for monitoring coverage across 60+ manufacturers.
 
-## Current State (2026-04-17)
+## Current State (2026-04-17, end of round 2)
 
-**Coverage:** 93 manufacturers seeded, **83 with scraped data (89%)**, **1,020 models, 2,115 floorplans, 8,816 images**.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,052 models, 2,264 floorplans, 10,666 images**.
 (10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
+
+**Session deltas (2026-04-17, single-day run):**
+484 → 1,052 models (+568) · 842 → 2,264 floorplans (+1,422) · 3,111 → 10,666 images (+7,555) · 54 → 83 brands with data (+29).
+
+**Key extractor fixes shipped this session (not just tuning):**
+- `base.py` HTML truncation bumped 60 KB → **150 KB** + nav/header/footer stripped (floorplan rosters on content-heavy pages sit past 60 KB — Jayco Redhawk codes at ~117 KB, Airstream Classic at ~100 KB).
+- Gemini `maxOutputTokens` 4096 → **16384** + truncation-repair fallback in `_parse_json` (Gemini 2.5 Flash burns 3,900+ tokens on thinking before JSON emit — smaller budgets silently dropped everything).
+- `_rank_images()` scores images by model-name/URL-tail tokens with nav/menu/logo penalty before the 20-cap (prevents mega-menu chrome from starving real model photos).
+- `_extract_image_urls` now reads `data-src`, `data-lazy-src`, and `<source srcset="">` (Airstream lazy-load pattern).
+- Images `UNIQUE(source_url)` → **`UNIQUE(model_id, source_url)`** (shared floorplan CDN assets across sibling model pages were being dropped by `INSERT OR IGNORE`).
+- `model_urls` short-circuit in `_discover_models` (skip listing + AI link classify; feed per-floorplan URLs directly) — used by thor-motor-coach, coachmen, airstream, winnebago, newmar, drv, and the Forest River sub-brands.
+
+**Residual follow-ups (not blocking):**
+- **newmar**: 0 images — CDN serves extensionless `<img src="">` URLs; `_extract_image_urls` regex still requires `.jpg|.jpeg|.png|.webp`.
+- **drv**: 7 legacy junk model rows from earlier scrapes (URLs like `#acsbMenu`, `/wp-json/...`) with 0 floorplans — need targeted DELETE.
+- **grand-design / lance / fleetwood / holiday-rambler**: ~30 stale dedup rows total (NULL-year duplicates + `/decor/`, `/features/`, `/find-model/` sub-page rows from pre-exclude scrapes). Populated rows are correct; legacy rows are defunct stubs.
+- Floorplan spec fields (length, sleeping capacity, dry weight) often `None` when site renders them in an HTML table below the main text — Gemini extracts the code but skips the table. Next target for the extractor.
+- **coachmen**: 9 seed URLs returned null from Gemini as non-model/placeholder pages — worth revisiting in a later coverage audit.
 
 **Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), per-brand configs with `model_path_patterns` and `force_stealth` escape hatches, **stealth fetcher** (puppeteer-real-browser, local PC, bypasses Cloudflare/Akamai without proxy).
 
