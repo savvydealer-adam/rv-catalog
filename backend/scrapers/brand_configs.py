@@ -57,17 +57,49 @@ CONFIGS: dict[str, BrandConfig] = {
         ],
         "force_stealth": True,
     },
-    # Winnebago: models at /motorhomes/<type>/<model>
+    # Winnebago: models live at /models/<slug> OR /models/product/<cat>/<sub>/<slug>.
+    # Listing-page discovery used to return BOTH which duplicated every model and
+    # left many rows with 0 fp/img (the hub /models/<slug> version is often a
+    # year-landing page). Seed the canonical /models/<slug> URLs harvested from
+    # sitemap.xml 2026-04-17, skipping the /models/product/ legacy routes.
     "winnebago": {
-        "listing_pages": [
-            "/motorhomes/class-a",
-            "/motorhomes/class-b",
-            "/motorhomes/class-c",
-            "/touring-coaches",
-            "/towables/travel-trailers",
-            "/towables/fifth-wheels",
+        "model_urls": [
+            "/models/adventurer",
+            "/models/ekko",
+            "/models/ekko-sprinter",
+            "/models/era",
+            "/models/forza",
+            "/models/horizon",
+            "/models/hike-100",
+            "/models/intent",
+            "/models/journey",
+            "/models/micro-minnie",
+            "/models/micro-minnie-fl",
+            "/models/minnie",
+            "/models/minnie-drop",
+            "/models/minnie-plus",
+            "/models/minnie-winnie",
+            "/models/m-series",
+            "/models/navion",
+            "/models/outlook",
+            "/models/revel",
+            "/models/solis",
+            "/models/solis-46",
+            "/models/solis-pocket",
+            "/models/spirit",
+            "/models/sunflyer",
+            "/models/sunstar",
+            "/models/sunstar-npf",
+            "/models/thrive",
+            "/models/travato",
+            "/models/view",
+            "/models/view-navion",
+            "/models/vista",
+            "/models/vista-npf",
+            "/models/voyage",
         ],
         "force_playwright": True,
+        "exclude_patterns": ["/models/product/"],
     },
     # Heartland: WordPress site behind Cloudflare, categories at /rv-type/<cat>/,
     # sub-brand pages at /brand/<slug>/ (each sub-brand page lists its floorplans)
@@ -165,13 +197,57 @@ CONFIGS: dict[str, BrandConfig] = {
             "/toy-haulers",
         ],
     },
-    # Airstream: unique URL structure
+    # Airstream: each model has /travel-trailers/<slug>/ canonical + N sub-pages
+    # (/features/, /specifications/, /floorplans/, /floorplans/<code>/,
+    # /brochure/, /brochure/thank-you/). The main model page exposes only
+    # hero/lifestyle images — the /floorplans/ index page is the authoritative
+    # source of floorplan codes. Seed BOTH for each model so the extractor
+    # captures images from the main page AND the floorplan roster from the
+    # /floorplans/ index (persist merges under the same model_name key).
+    # Skipping sitemap discovery avoids the dup-sub-page explosion that left
+    # 39 empty rows after round 1.
     "airstream": {
-        "listing_pages": [
-            "/travel-trailers",
-            "/touring-coaches",
+        "model_urls": [
+            # Travel trailers — canonical model page + floorplan roster
+            "/travel-trailers/classic/",
+            "/travel-trailers/classic/floorplans/",
+            "/travel-trailers/flying-cloud/",
+            "/travel-trailers/flying-cloud/floorplans/",
+            "/travel-trailers/globetrotter/",
+            "/travel-trailers/globetrotter/floorplans/",
+            "/travel-trailers/international/",
+            "/travel-trailers/international/floorplans/",
+            "/travel-trailers/international-signature/",
+            "/travel-trailers/international-signature/floorplans/",
+            "/travel-trailers/caravel/",
+            "/travel-trailers/caravel/floorplans/",
+            "/travel-trailers/bambi/",
+            "/travel-trailers/bambi/floorplans/",
+            "/travel-trailers/sport/",
+            "/travel-trailers/sport/floorplans/",
+            "/travel-trailers/basecamp/",
+            "/travel-trailers/basecamp/floorplans/",
+            "/travel-trailers/trade-wind/",
+            "/travel-trailers/trade-wind/floorplans/",
+            "/travel-trailers/nest/",
+            "/travel-trailers/silver-lining/",
+            "/travel-trailers/pottery-barn-special-edition/",
+            "/travel-trailers/rei-special-edition/",
+            "/travel-trailers/stetson-6666-special-edition/",
+            "/travel-trailers/frank-lloyd-wright-special-edition/",
+            # Touring coaches (Class B)
+            "/touring-coaches/interstate-19gtx/",
+            "/touring-coaches/interstate-19gtx/floorplans/",
+            "/touring-coaches/interstate-24gt/",
+            "/touring-coaches/interstate-24gt/floorplans/",
+            "/touring-coaches/interstate-24glx/",
+            "/touring-coaches/interstate-24glx/floorplans/",
+            "/touring-coaches/interstate-24x/",
+            "/touring-coaches/interstate-24x/floorplans/",
+            "/touring-coaches/atlas/",
+            "/touring-coaches/rangeline/",
         ],
-        "force_playwright": True,
+        "force_stealth": True,
     },
     # Highland Ridge
     "highland-ridge": {
@@ -212,6 +288,16 @@ CONFIGS: dict[str, BrandConfig] = {
     },
     # Fleetwood
     "fleetwood": {
+        "listing_pages": [
+            "/class-a-motorhomes",
+            "/class-c-motorhomes",
+        ],
+        "force_stealth": True,
+    },
+    # Holiday Rambler: Akamai-style WAF returns 403 on plain httpx even with
+    # IPRoyal residential proxy. Forces stealth (puppeteer-real-browser) for
+    # both listing + model pages. Confirmed 2026-04-17.
+    "holiday-rambler": {
         "listing_pages": [
             "/class-a-motorhomes",
             "/class-c-motorhomes",
@@ -578,17 +664,26 @@ CONFIGS: dict[str, BrandConfig] = {
         ],
         "force_stealth": True,
     },
-    # Jayco: individual model pages under /rvs/<type>/<slug>/
+    # Jayco: individual model pages under /rvs/<type>/2026-<slug>/. Floorplan
+    # detail sits ~100KB into the rendered HTML (below the old 60KB cut) so
+    # the base extractor truncation bump to 150KB is load-bearing here. Exclude
+    # /floorplans/ sub-pages (they get re-extracted as separate models with a
+    # code-only name) and the /brochure/ download pages.
     "jayco": {
         "listing_pages": [
             "/rvs/travel-trailers",
             "/rvs/fifth-wheels",
             "/rvs/toy-haulers",
             "/rvs/class-a-motorhomes",
+            "/rvs/class-b-motorhomes",
             "/rvs/class-c-motorhomes",
             "/rvs/camping-trailers",
         ],
         "model_path_patterns": ["/rvs/"],
+        "exclude_patterns": [
+            "/floorplans/", "/brochure", "/options",
+            "/features", "/specifications", "/standard-features",
+        ],
         "force_playwright": True,
     },
     # Roadtrek: /models/<slug>/

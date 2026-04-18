@@ -237,6 +237,72 @@ entirely and feed per-floorplan URLs straight to `_extract_model`.
 Both fixes are same-shape as existing `model_urls` configs; no base.py
 changes required. DB backup at `data/rv_catalog.db.bak.newmar-drv-20260417-1932`.
 
+### Round 2 extractor fix (2026-04-17)
+
+Three high-traffic brands -- **airstream, winnebago, jayco** -- were carrying
+most of their rows with 0 floorplans AND 0 images despite working fetches.
+Two root causes, both in `base.py _extract_model`:
+
+1. **60 KB truncation ate the floorplan section.** Gemini only saw the first
+   60 KB of cleaned HTML. On content-heavy model pages the floorplan roster
+   sits at ~100-120 KB (Jayco Redhawk codes 24B/26M/29XK/31F at offset 117 KB,
+   Airstream Classic `33FB` at ~100 KB). Bumped truncation to **150 KB** and
+   added `<nav>/<header>/<footer>` stripping so mega-menu chrome no longer
+   consumes the budget.
+2. **Images sliced at 20 after DOM order.** `image_urls[:20]` kept the first
+   20 images encountered, which on every site tested were menu/nav chrome.
+   Added `_rank_images()` that scores images by how many tokens they share
+   with the model name + URL-path tail (boost) and how many nav/logo/menu
+   keywords they contain (penalty), then sorts before the 20-cap. Also
+   expanded `_extract_image_urls` to pick up `data-src`, `data-lazy-src`,
+   and `<source srcset="">` (needed for Airstream's lazy-load pattern).
+
+Plus per-brand tuning in `brand_configs.py`:
+
+- **airstream**: Pure `model_urls` seeds (22 model pages + 18 `/floorplans/`
+  index pages). The `/floorplans/` indexes carry the full code roster; the
+  model-root pages carry hero/lifestyle images. Seeding explicit URLs skips
+  the junk sub-pages (`/features/`, `/specifications/`, `/brochure/`,
+  `/brochure/thank-you/`, `/floorplans/<code>/`) that the Gemini link
+  classifier was marking as model pages and was creating N dup rows per
+  model with NULL model_year (bypassing the `UNIQUE` constraint).
+- **winnebago**: `model_urls` = 33 canonical `/models/<slug>` harvested from
+  sitemap. Old config crawled listing pages which returned BOTH
+  `/models/<slug>` and `/models/product/<cat>/<sub>/<slug>` -- the `product/`
+  legacy route is a thin hub. `exclude_patterns: ["/models/product/"]` as
+  belt-and-suspenders.
+- **jayco**: Left `listing_pages` + `model_path_patterns: ["/rvs/"]`
+  unchanged but added `exclude_patterns` for `/floorplans/`, `/brochure`,
+  `/features`, `/specifications`, `/standard-features`, `/options` so
+  Gemini doesn't treat those sub-pages as new models. The 150 KB
+  truncation bump is load-bearing here (Redhawk floorplan section is at
+  117 KB).
+
+Post-run dedup script deleted empty rows that shared `source_url` with a
+populated row (legacy dupes from pre-fix scrapes that had NULL `model_year`)
++ one stale Jayco row whose URL now 301-redirects (Redhawk slug migrated to
+Redhawk SE).
+
+Before/after (each brand's manufacturer counters):
+
+| brand      | models         | floorplans      | images           | empty rows |
+|------------|----------------|-----------------|------------------|------------|
+| airstream  | 69 -> 47       | 33 -> **85**    | 20 -> **665**    | 39 -> 0    |
+| winnebago  | 41 -> 59       | 26 -> **59**    | 293 -> **503**   | 11+ -> 0   |
+| jayco      | 33 -> 35       | 65 -> **90**    | 20 -> **641**    | 17+ -> 0   |
+
+**Totals: +117 floorplans, +1,476 images, -67 junk rows across the three.**
+
+Airstream model count *dropped* because the old 69 was inflated with 39
+dup/junk rows (each sub-page getting its own NULL-year row); the 47 we end
+at is the real roster (16 travel-trailers + 6 touring coaches, each
+represented once by a populated canonical row and once by a populated
+`/floorplans/` row that persist merges via model_name). Winnebago model
+count went up because the seed list surfaced canonical pages the old
+listing crawl missed (sunflyer, horizon, hike-100, m-series, etc).
+
+DB backup at `data/rv_catalog.db.bak.round2-20260417-1926`.
+
 ### Future
 - Cloud Run deploy with production DB
 - MCP server wrapper

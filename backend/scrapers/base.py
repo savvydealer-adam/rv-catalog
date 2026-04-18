@@ -488,10 +488,18 @@ class GenericScraper:
         # Strip script/style content but keep structure
         html_clean = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
         html_clean = re.sub(r"<style[^>]*>.*?</style>", "", html_clean, flags=re.DOTALL)
+        # Also strip nav/header/footer — these are usually mega-menu noise
+        # that pushes the real model content past the truncation window.
+        html_clean = re.sub(r"<nav\b[^>]*>.*?</nav>", "", html_clean, flags=re.DOTALL | re.IGNORECASE)
+        html_clean = re.sub(r"<header\b[^>]*>.*?</header>", "", html_clean, flags=re.DOTALL | re.IGNORECASE)
+        html_clean = re.sub(r"<footer\b[^>]*>.*?</footer>", "", html_clean, flags=re.DOTALL | re.IGNORECASE)
         # Collapse whitespace
         html_clean = re.sub(r"\s+", " ", html_clean)
-        # Limit size
-        html_clean = html_clean[:60000]
+        # Limit size. Was 60KB but that dropped floorplan sections below the fold
+        # on content-heavy model pages (Jayco Redhawk floorplans at ~100KB,
+        # Airstream Classic floor plan codes at ~100KB). 150KB still fits the
+        # Gemini 2.5 Flash input budget comfortably.
+        html_clean = html_clean[:150000]
 
         # Find images in the HTML
         image_urls = self._extract_image_urls(html, url)
@@ -536,6 +544,13 @@ Respond with ONLY the JSON, no markdown formatting."""
         if not data or not isinstance(data, dict) or not data.get("model_name"):
             return None
 
+        # Rank images: prefer those whose URL or surrounding alt-text mentions
+        # the model name or the last URL path segment (e.g. "classic", "redhawk",
+        # "vista"). Menu/nav chrome images appear first in the DOM and would
+        # otherwise crowd out the real model photos when we cap at 20.
+        ranked_images = self._rank_images(
+            image_urls, data["model_name"], url
+        )
         model = ExtractedModel(
             model_name=data["model_name"],
             rv_class=data.get("rv_class"),
@@ -549,7 +564,7 @@ Respond with ONLY the JSON, no markdown formatting."""
             slideout_count_max=data.get("slideout_count_max"),
             base_msrp_usd=data.get("base_msrp_usd"),
             source_url=url,
-            image_urls=image_urls[:20],
+            image_urls=ranked_images[:20],
         )
 
         for fp in data.get("floorplans") or []:
@@ -572,16 +587,78 @@ Respond with ONLY the JSON, no markdown formatting."""
         return model
 
     def _extract_image_urls(self, html: str, page_url: str) -> list[str]:
-        """Find candidate image URLs on the page."""
-        imgs = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html)
+        """Find candidate image URLs on the page (src + data-src + srcset)."""
+        srcs: list[str] = []
+        srcs.extend(re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html))
+        # Lazy-load attributes commonly used on image-heavy OEM model pages.
+        srcs.extend(re.findall(r'data-src=["\']([^"\']+)["\']', html))
+        srcs.extend(re.findall(r'data-lazy-src=["\']([^"\']+)["\']', html))
+        # <source srcset=...> inside <picture>
+        for ss in re.findall(r'<source[^>]+srcset=["\']([^"\']+)["\']', html):
+            # srcset is comma-separated "url width" pairs; take the URLs
+            for part in ss.split(","):
+                u = part.strip().split(" ")[0]
+                if u:
+                    srcs.append(u)
         results = []
-        for src in imgs:
+        for src in srcs:
+            src = src.strip()
             if src.startswith("data:") or len(src) < 10:
                 continue
             full = urljoin(page_url, src)
             if any(ext in full.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                 results.append(full)
         return list(dict.fromkeys(results))
+
+    def _rank_images(
+        self, images: list[str], model_name: str, page_url: str
+    ) -> list[str]:
+        """Sort images so model-specific ones come first.
+
+        Scoring boosts images whose URL contains any token from the model name
+        or the final segment of the page URL (e.g. `redhawk`, `classic`,
+        `vista`). De-boosts obvious nav/menu/icon/logo chrome. Keeps original
+        order within each bucket for determinism.
+        """
+        # Build lowercase token set from model_name and url path tail
+        tokens: set[str] = set()
+        for raw in re.split(r"[\s\-_/]+", (model_name or "").lower()):
+            if raw and len(raw) >= 3:
+                tokens.add(raw)
+        path = urlparse(page_url).path.lower().strip("/")
+        for seg in path.split("/"):
+            for raw in re.split(r"[\s\-_]+", seg):
+                if raw and len(raw) >= 3 and not raw.isdigit():
+                    tokens.add(raw)
+        # Drop generic tokens that would match every page
+        tokens -= {
+            "rvs", "rv", "model", "models", "product", "products", "the",
+            "and", "for", "travel", "trailer", "trailers", "motorhome",
+            "motorhomes", "wheel", "wheels", "touring", "coach", "coaches",
+            "class", "hauler", "haulers", "camper", "campers",
+        }
+
+        bad_kws = (
+            "/menu", "/nav", "/logo", "/icon", "/banner",
+            "mega-menu", "menu-", "-nav", "_nav", "-icon", "-logo",
+            "placeholder", "cookielaw", "facebook", "doubleclick",
+            "analytics", "/plugins/", "/themes/", "spinner",
+        )
+
+        scored: list[tuple[int, int, str]] = []
+        for i, u in enumerate(images):
+            lu = u.lower()
+            score = 0
+            if any(tok and tok in lu for tok in tokens):
+                score += 10
+            if any(bad in lu for bad in bad_kws):
+                score -= 5
+            # Prefer bigger thumbs / hero shots via common size hints
+            if "1920" in lu or "1600" in lu or "1275" in lu or "1170" in lu:
+                score += 1
+            scored.append((-score, i, u))  # sort ascending; lower score = later
+        scored.sort()
+        return [u for _, _, u in scored]
 
     async def _call_gemini(self, prompt: str, max_retries: int = 2) -> str:
         """Call Gemini API with retry on rate limit."""
@@ -596,7 +673,12 @@ Respond with ONLY the JSON, no markdown formatting."""
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.0,
-                "maxOutputTokens": 4096,
+                # Gemini 2.5 flash burns output-token budget on "thinking" before
+                # emitting the final JSON. 4096 caused frequent MAX_TOKENS
+                # truncation on series pages with 6-10 floorplans (mid-sentence
+                # cutoffs meant _parse_json returned None, dropping the model +
+                # all its floorplans + all its images). Bumped to 16384.
+                "maxOutputTokens": 16384,
                 "responseMimeType": "application/json",
             },
         }
@@ -618,7 +700,14 @@ Respond with ONLY the JSON, no markdown formatting."""
         return ""
 
     def _parse_json(self, text: str) -> Any:
-        """Extract JSON from Gemini response (may have markdown fences)."""
+        """Extract JSON from Gemini response (may have markdown fences).
+
+        Falls back to truncation-repair: if the JSON parse fails (e.g. Gemini
+        hit MAX_TOKENS mid-string), walk back to the last position where all
+        open structures can be cleanly closed with } and ], producing valid
+        JSON that preserves every complete property and array element emitted
+        so far. Better a partial model + 3 floorplans than None.
+        """
         text = text.strip()
         # Strip markdown fences
         text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -626,7 +715,105 @@ Respond with ONLY the JSON, no markdown formatting."""
         try:
             return json.loads(text)
         except Exception:
+            pass
+
+        # Salvage: scan once and record at each character the current bracket
+        # stack AND whether the position is a "clean cut point" — meaning the
+        # last token to its left was a complete value (}, ], scalar literal,
+        # or string end quote) and not mid-property. Then walk from the end
+        # backward trying to close the stack at each clean cut point.
+        s = text.strip()
+        if not s.startswith("{"):
             return None
+
+        # Build per-position stack snapshots while tracking "mid-property" state.
+        # Clean cut = right after a complete value at any array/object depth,
+        # BEFORE encountering the next key or colon.
+        cut_points: list[tuple[int, list[str]]] = []  # (index, stack)
+        stack: list[str] = []
+        in_str, escape = False, False
+        last_nonspace_closed_value = False
+        expect_value = True  # start of object means next token is '{'
+        i = 0
+        while i < len(s):
+            ch = s[i]
+            if escape:
+                escape = False
+                i += 1
+                continue
+            if in_str:
+                if ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_str = False
+                    last_nonspace_closed_value = True
+                    # String just closed — if inside an array or as a value, this is a cut point
+                    # (but NOT if it's a key — we don't know until we see the next non-space char)
+                i += 1
+                continue
+            if ch == '"':
+                in_str = True
+                i += 1
+                continue
+            if ch in " \t\n\r":
+                i += 1
+                continue
+            if ch == "{":
+                stack.append("}")
+                last_nonspace_closed_value = False
+                i += 1
+                continue
+            if ch == "[":
+                stack.append("]")
+                last_nonspace_closed_value = False
+                i += 1
+                continue
+            if ch == "}":
+                if stack and stack[-1] == "}":
+                    stack.pop()
+                    last_nonspace_closed_value = True
+                    cut_points.append((i + 1, list(stack)))
+                i += 1
+                continue
+            if ch == "]":
+                if stack and stack[-1] == "]":
+                    stack.pop()
+                    last_nonspace_closed_value = True
+                    cut_points.append((i + 1, list(stack)))
+                i += 1
+                continue
+            if ch == ",":
+                # comma means previous token was a complete value; cut BEFORE comma
+                if last_nonspace_closed_value:
+                    cut_points.append((i, list(stack)))
+                last_nonspace_closed_value = False
+                i += 1
+                continue
+            if ch == ":":
+                # colon means preceding token was a key (not a value); reset
+                last_nonspace_closed_value = False
+                i += 1
+                continue
+            # scalar value (number, true/false/null) — consume until delimiter
+            j = i
+            while j < len(s) and s[j] not in ",]}" and s[j] not in " \t\n\r":
+                j += 1
+            # The scalar may be incomplete (e.g. '33.9' at EOF) — only count it
+            # as closed if a delimiter follows.
+            if j < len(s):
+                last_nonspace_closed_value = True
+            i = j
+
+        if not cut_points:
+            return None
+        # Try the latest cut point first, falling back to earlier ones if parse fails
+        for idx, stk in reversed(cut_points):
+            candidate = s[:idx] + "".join(reversed(stk))
+            try:
+                return json.loads(candidate)
+            except Exception:
+                continue
+        return None
 
     def _persist(self, models: list[ExtractedModel]):
         """Save extracted models to the database."""
