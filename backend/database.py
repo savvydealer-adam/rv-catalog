@@ -153,7 +153,9 @@ CREATE TABLE IF NOT EXISTS images (
     height_px       INTEGER,
     file_size_bytes INTEGER,
     created_at      TEXT NOT NULL DEFAULT (datetime('now','utc')),
-    UNIQUE(source_url)
+    -- Allow the same image URL to be associated with multiple models
+    -- (e.g. floorplan images shared between a parent series and its sub-models).
+    UNIQUE(model_id, source_url)
 );
 
 -- Scrape run tracking

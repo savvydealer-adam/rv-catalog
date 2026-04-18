@@ -303,6 +303,68 @@ listing crawl missed (sunflyer, horizon, hike-100, m-series, etc).
 
 DB backup at `data/rv_catalog.db.bak.round2-20260417-1926`.
 
+### Round 2 image backfill (2026-04-17)
+
+Four more brands -- **holiday-rambler, fleetwood, grand-design, lance** --
+had good floorplan coverage but most models showed 0 images in the DB
+(holiday-rambler 24/25 rows at 0 imgs, fleetwood 23/24, grand-design 23/36,
+lance 22/49). Root-cause analysis turned up three independent bugs that
+compounded:
+
+1. **Gemini 2.5 Flash MAX_TOKENS truncation.** `maxOutputTokens: 4096`
+   wasn't enough: the model burns most of that budget on internal
+   "thinking" tokens (3900+ per request observed) before emitting JSON, so
+   responses with 6+ floorplans got cut off mid-string. `_parse_json`
+   returned None, which made `_extract_model` return None, which prevented
+   any persist -- no model, no floorplans, no images. **Fix:** bumped to
+   `maxOutputTokens: 16384` AND added a truncation-repair path in
+   `_parse_json` that walks back to the last valid cut point and closes
+   open braces/brackets so a partial response still yields usable data.
+2. **`UNIQUE(source_url)` blocked shared floorplan images.** Grand Design's
+   parent series pages (e.g. `/fifth-wheels/reflection`) and sub-model
+   pages (`/fifth-wheels/reflection/303rls`) both link to the same
+   `303RLS.png` CDN asset. Whichever model got scraped first claimed the
+   URL; every other model hit `INSERT OR IGNORE` and silently dropped.
+   **Fix:** migrated the constraint to `UNIQUE(model_id, source_url)` so
+   the same image URL can be associated with multiple models legitimately.
+   Applied in-place to the running DB and updated `database.py` SCHEMA_SQL.
+3. **Holiday Rambler was WAF-blocked on httpx.** holidayrambler.com
+   returned 403 to every httpx request even through IPRoyal. The 403
+   fallback path to stealth_fetch sometimes failed due to the default 60 s
+   nav timeout. **Fix:** added `holiday-rambler` to `brand_configs.py`
+   with `force_stealth: True`, matching the fleetwood config.
+
+Fleetwood, holiday-rambler, and most of the other zero-image failures were
+actually caused by the image-ranker work-stealing: the first model scraped
+on a page would grab 20 sibling-thumbnail URLs from the "Check out our
+other models" rail (Palisade, Discovery, Frontier, etc -- all present on
+every Fleetwood model page), and the `UNIQUE(source_url)` constraint then
+blocked every subsequent model from storing the same URLs. Fix #2 alone
+would have helped, but the round-2 `_rank_images` (committed in c937e3d)
+also ensures each model claims its own hero/gallery URLs first.
+
+Before/after (each brand's manufacturer counters):
+
+| brand            | models     | floorplans    | images         | zero-image rows |
+|------------------|------------|---------------|----------------|-----------------|
+| holiday-rambler  | 25 -> 26   | 80 -> 84      | 20 -> **518**  | 24 -> 1         |
+| fleetwood        | 24 -> 31   | 77 -> 101     | 20 -> **614**  | 23 -> 1         |
+| grand-design     | 36 -> 90   | 73 -> 135     | 93 -> **647**  | 23 -> 10        |
+| lance            | 49 -> 57   | 51 -> 72      | 112 -> **466** | 22 -> 18        |
+
+**Totals: +2,000 images across the four brands.**
+
+Remaining zero-image rows are pre-existing dedup artifacts -- multiple
+model rows share a source_url but have slightly different `model_name`
+values from earlier scrape-AI variations (e.g. `"324MBS"` vs
+`"Reflection 324MBS"` for the same page). The populated row is the newer
+one; the legacy row is defunct. Lance's 18 stale rows are all
+`/decor/`, `/features/`, and `/find-model/` sub-pages that should have
+been excluded by the current config (which does have the exclude) but
+were persisted before the exclude was added.
+
+DB backup at `data/rv_catalog.db.bak.imgfill-20260417-1933`.
+
 ### Future
 - Cloud Run deploy with production DB
 - MCP server wrapper
