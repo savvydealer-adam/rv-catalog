@@ -4,23 +4,35 @@
 
 A standalone service that owns all RV manufacturer, model, and floorplan data. Dealer websites (STL RV, future sites) call this API instead of maintaining their own knowledge bases. Includes an admin dashboard for monitoring coverage across 60+ manufacturers.
 
-## Current State (2026-04-20, end of spec-round enrichment)
+## Current State (2026-04-20, end of post-IPRoyal-bypass sweep — rounds 2-5)
 
-**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,094 models, 2,537 floorplans, 12,478 images**.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,211 models, 3,498 floorplans, 16,273 images**.
 (10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
 
-**2026-04-20 spec-round deltas (6 brands re-scraped with IPRoyal bypassed after the 402 quota-exhaustion fix):**
+**2026-04-20 session deltas (across 4 enrichment rounds + newmar + coachmen + cleanup):**
+1,052 → 1,211 models (+159) · 2,264 → 3,498 floorplans (+1,234) · 10,666 → 16,273 images (+5,607).
 
-| brand        | models          | floorplans      | images           | gvwr hit-rate |
-|--------------|-----------------|-----------------|------------------|---------------|
-| tiffin       | 30 -> 36 (+6)   | 69 -> 86 (+17)  | 443 -> 597 (+154)| 28/69 -> 40/86|
-| winnebago    | 59 -> 82 (+23)  | 59 -> 66 (+7)   | 503 -> 583 (+80) | 0 (not published) |
-| roadtrek     | 14 -> 18 (+4)   | 20 -> 25 (+5)   | 8 -> 88 (+80)    | 0 -> 5/25     |
-| ibex         | 11 -> 20 (+9)   | 19 -> 36 (+17)  | 18 -> 110 (+92)  | 19/19 -> 36/36|
-| sabre        | 10 -> 15 (+5)   | 10 -> 20 (+10)  | 15 -> 290 (+275) | 9/10 -> 16/20 |
-| flagstaff-rv | 5 -> 8 (+3)     | 40 -> 82 (+42)  | 10 -> 169 (+159) | 38/40 -> 80/82|
+**Headline wins (rounds run with `CD_IPROYAL_USER= CD_IPROYAL_PASS=` after 402 quota exhaustion + ProxyError fallback):**
 
-**TOTALS +50 models, +98 floorplans, +840 images** after the IPRoyal bypass. Confirms the pipeline itself is healthy; the proxy account exhaustion was the whole ceiling. Spec-table hit-rates all held or improved proportional to the floorplan count growth.
+| round | brands                                                                                                        | +models | +fp  | +imgs |
+|-------|---------------------------------------------------------------------------------------------------------------|---------|------|-------|
+| 2     | tiffin, winnebago, roadtrek, ibex, sabre, flagstaff-rv                                                        | +50     | +98  | +840  |
+| 3     | no-boundaries, riverstone, vibe-rv, happier-camper, rockwood, host, palomino, heartland                        | +27     | +119 | +1,026|
+| 4     | genesis-supreme, work-and-play, cedar-creek, gulf-stream, dutchmen, hiker, travel-lite, bowlus                 | +54     | +606 | +912  |
+| 5     | thor-motor-coach, northwood, stealth, pleasure-way, aliner, lance, keystone, cardinal                          | +19     | +233 | +1,826|
+
+**Largest single-brand jumps:**
+- **thor-motor-coach**: 187 → 947 images (+760) — Scene7 CDN URLs from 3ade128 finally picked up
+- **gulf-stream**: 6 → 25 models / 27 → 324 fp / 46 → 414 imgs — httpx path had been failing silently under IPRoyal 402
+- **keystone**: 18 → 36 models / 156 → 473 imgs — discovery re-found the series it had lost
+- **genesis-supreme**: 15 → 29 models / 23 → 235 fp / 36 → 332 imgs
+- **sabre**: 15 → 290 images (+275) via image ranker + CDN
+- **lance**: 466 → 611 imgs (model count dropped 57 → 49 due to canonical-name dedup)
+
+**Confirmed genuinely-unpublished-by-site (not scraper misses):**
+- **tiffin dry_weight_lbs** — never in the source HTML
+- **winnebago gvwr_lbs** — never in source
+- **bowlus** images — site has no photos on listing/detail pages (after 2 rescrape attempts)
 
 **2026-04-20 deltas (residual follow-ups from the 04-17 PLAN.md list):**
 - **newmar images**: 0 → **369** (+369). `_extract_image_urls` extended to accept extensionless CDN URLs (Scene7 `/is/image/`, Cloudinary `/image/upload/`, imgix, Shopify CDN) and HTML-decode `&amp;` in src attrs.
