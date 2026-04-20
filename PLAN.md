@@ -4,10 +4,16 @@
 
 A standalone service that owns all RV manufacturer, model, and floorplan data. Dealer websites (STL RV, future sites) call this API instead of maintaining their own knowledge bases. Includes an admin dashboard for monitoring coverage across 60+ manufacturers.
 
-## Current State (2026-04-17, end of round 2)
+## Current State (2026-04-20, residual-cleanup round)
 
-**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,052 models, 2,264 floorplans, 10,666 images**.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,032 models, 2,410 floorplans, 11,331 images**.
 (10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
+
+**2026-04-20 deltas (residual follow-ups from the 04-17 PLAN.md list):**
+- **newmar images**: 0 → **369** (+369). `_extract_image_urls` extended to accept extensionless CDN URLs (Scene7 `/is/image/`, Cloudinary `/image/upload/`, imgix, Shopify CDN) and HTML-decode `&amp;` in src attrs.
+- **coachmen re-scrape**: 30 → 39 models, 135 → 293 floorplans (+158), 433 → 777 images (+344). The 9 previously-"null" seeds (apex-ultra-lite, catalina-summit-series-8, chaparral, cross-trail, freedom-express-ultra-lite, northern-spirit, northern-spirit-dlx-&-compact, shasta, shasta-i-5-edition-&-compact) all extract cleanly now — the 16k maxOutputTokens bump (c937e3d) had already fixed them; they just hadn't been re-run.
+- **DB cleanup**: -29 junk rows across drv/grand-design/lance (/decor/, /features/, /find-model/, /archive, /test/, /adventure-more/, #acsbMenu, /wp-json/). Cascade-deleted orphan floorplans + images. Backup at `data/rv_catalog.db.bak.cleanup-20260418-150121`.
+- **Spec-table prompt hint**: added explicit guidance for Gemini to parse `<table>/<dl>/<dt>/<dd>` spec blocks into `length_ft`/`sleeping_capacity`/`dry_weight_lbs`/`gvwr_lbs`/`slideout_count`/`bathroom_count` when the site renders them below the main text. Effect still-to-measure across re-scrape runs — on sampled pages where the spec isn't published (Airstream floorplan pages show Length only), the None values are genuine, not extractor misses.
 
 **Session deltas (2026-04-17, single-day run):**
 484 → 1,052 models (+568) · 842 → 2,264 floorplans (+1,422) · 3,111 → 10,666 images (+7,555) · 54 → 83 brands with data (+29).
@@ -20,12 +26,9 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 - Images `UNIQUE(source_url)` → **`UNIQUE(model_id, source_url)`** (shared floorplan CDN assets across sibling model pages were being dropped by `INSERT OR IGNORE`).
 - `model_urls` short-circuit in `_discover_models` (skip listing + AI link classify; feed per-floorplan URLs directly) — used by thor-motor-coach, coachmen, airstream, winnebago, newmar, drv, and the Forest River sub-brands.
 
-**Residual follow-ups (not blocking):**
-- **newmar**: 0 images — CDN serves extensionless `<img src="">` URLs; `_extract_image_urls` regex still requires `.jpg|.jpeg|.png|.webp`.
-- **drv**: 7 legacy junk model rows from earlier scrapes (URLs like `#acsbMenu`, `/wp-json/...`) with 0 floorplans — need targeted DELETE.
-- **grand-design / lance / fleetwood / holiday-rambler**: ~30 stale dedup rows total (NULL-year duplicates + `/decor/`, `/features/`, `/find-model/` sub-page rows from pre-exclude scrapes). Populated rows are correct; legacy rows are defunct stubs.
-- Floorplan spec fields (length, sleeping capacity, dry weight) often `None` when site renders them in an HTML table below the main text — Gemini extracts the code but skips the table. Next target for the extractor.
-- **coachmen**: 9 seed URLs returned null from Gemini as non-model/placeholder pages — worth revisiting in a later coverage audit.
+**Residual follow-ups (post-2026-04-20):**
+- **Spec-table hit rate**: the prompt hint landed (commit 3ade128) but no brand was re-scraped to measure its effect. Next maintenance pass should re-run a sample (jayco, winnebago, tiffin) and diff `dry_weight_lbs`/`sleeping_capacity`/`slideout_count` completion rates.
+- **Low-image active brands** (per `defunct=0`, `imgs<15`): bowlus, vengeance, travel-lite, sierra, hiker, sandpiper, surveyor, shasta, northern-lite, scamp, crossroads, xlr-toy-hauler, ember, palomino, roadtrek, flagstaff-rv. Some (bowlus, scamp) don't publish images; others (roadtrek, flagstaff-rv, ibex, sabre) are worth a re-scrape run now that the extractor is stricter about menu chrome.
 
 **Infra shipped:** IPRoyal residential proxy (rotating, bare auth via `CD_IPROYAL_USER/PASS`), Qwen3:32b recon pipeline (`scripts/qwen_site_recon.py`), per-brand configs with `model_path_patterns` and `force_stealth` escape hatches, **stealth fetcher** (puppeteer-real-browser, local PC, bypasses Cloudflare/Akamai without proxy).
 
