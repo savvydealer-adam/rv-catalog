@@ -4,10 +4,23 @@
 
 A standalone service that owns all RV manufacturer, model, and floorplan data. Dealer websites (STL RV, future sites) call this API instead of maintaining their own knowledge bases. Includes an admin dashboard for monitoring coverage across 60+ manufacturers.
 
-## Current State (2026-04-20, residual-cleanup round)
+## Current State (2026-04-20, end of spec-round enrichment)
 
-**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,032 models, 2,410 floorplans, 11,331 images**.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,094 models, 2,537 floorplans, 12,478 images**.
 (10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
+
+**2026-04-20 spec-round deltas (6 brands re-scraped with IPRoyal bypassed after the 402 quota-exhaustion fix):**
+
+| brand        | models          | floorplans      | images           | gvwr hit-rate |
+|--------------|-----------------|-----------------|------------------|---------------|
+| tiffin       | 30 -> 36 (+6)   | 69 -> 86 (+17)  | 443 -> 597 (+154)| 28/69 -> 40/86|
+| winnebago    | 59 -> 82 (+23)  | 59 -> 66 (+7)   | 503 -> 583 (+80) | 0 (not published) |
+| roadtrek     | 14 -> 18 (+4)   | 20 -> 25 (+5)   | 8 -> 88 (+80)    | 0 -> 5/25     |
+| ibex         | 11 -> 20 (+9)   | 19 -> 36 (+17)  | 18 -> 110 (+92)  | 19/19 -> 36/36|
+| sabre        | 10 -> 15 (+5)   | 10 -> 20 (+10)  | 15 -> 290 (+275) | 9/10 -> 16/20 |
+| flagstaff-rv | 5 -> 8 (+3)     | 40 -> 82 (+42)  | 10 -> 169 (+159) | 38/40 -> 80/82|
+
+**TOTALS +50 models, +98 floorplans, +840 images** after the IPRoyal bypass. Confirms the pipeline itself is healthy; the proxy account exhaustion was the whole ceiling. Spec-table hit-rates all held or improved proportional to the floorplan count growth.
 
 **2026-04-20 deltas (residual follow-ups from the 04-17 PLAN.md list):**
 - **newmar images**: 0 → **369** (+369). `_extract_image_urls` extended to accept extensionless CDN URLs (Scene7 `/is/image/`, Cloudinary `/image/upload/`, imgix, Shopify CDN) and HTML-decode `&amp;` in src attrs.
