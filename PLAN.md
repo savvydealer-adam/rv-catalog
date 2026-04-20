@@ -4,13 +4,13 @@
 
 A standalone service that owns all RV manufacturer, model, and floorplan data. Dealer websites (STL RV, future sites) call this API instead of maintaining their own knowledge bases. Includes an admin dashboard for monitoring coverage across 60+ manufacturers.
 
-## Current State (2026-04-20, end of post-IPRoyal-bypass sweep — rounds 2-5)
+## Current State (2026-04-20, end of post-IPRoyal-bypass sweep — rounds 2-6)
 
-**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,211 models, 3,498 floorplans, 16,273 images**.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,244 models, 3,555 floorplans, 17,593 images**.
 (10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
 
-**2026-04-20 session deltas (across 4 enrichment rounds + newmar + coachmen + cleanup):**
-1,052 → 1,211 models (+159) · 2,264 → 3,498 floorplans (+1,234) · 10,666 → 16,273 images (+5,607).
+**2026-04-20 session deltas (5 enrichment rounds + newmar + coachmen + cleanup):**
+1,052 → 1,244 models (+192) · 2,264 → 3,555 floorplans (+1,291) · 10,666 → 17,593 images (+6,927).
 
 **Headline wins (rounds run with `CD_IPROYAL_USER= CD_IPROYAL_PASS=` after 402 quota exhaustion + ProxyError fallback):**
 
@@ -20,6 +20,7 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 | 3     | no-boundaries, riverstone, vibe-rv, happier-camper, rockwood, host, palomino, heartland                        | +27     | +119 | +1,026|
 | 4     | genesis-supreme, work-and-play, cedar-creek, gulf-stream, dutchmen, hiker, travel-lite, bowlus                 | +54     | +606 | +912  |
 | 5     | thor-motor-coach, northwood, stealth, pleasure-way, aliner, lance, keystone, cardinal                          | +19     | +233 | +1,826|
+| 6     | grand-design, airstream, brinkley, wildwood-rv, highland-ridge, r-pod, solera, coach-house                     | +27     | +49  | +1,315|
 
 **Largest single-brand jumps:**
 - **thor-motor-coach**: 187 → 947 images (+760) — Scene7 CDN URLs from 3ade128 finally picked up
@@ -33,6 +34,9 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 - **tiffin dry_weight_lbs** — never in the source HTML
 - **winnebago gvwr_lbs** — never in source
 - **bowlus** images — site has no photos on listing/detail pages (after 2 rescrape attempts)
+
+**Discovery-failure brands (0 extracted in round 6, existing DB rows preserved):**
+- **r-pod, wildwood-rv** — Forest River detail URLs at `/rvs/<brand>/<code>/<id>`; category listing pages are SPA-filter-UI (same pattern as original Thor/Coachmen). Fix path: add `model_urls` seed lists to brand_configs.py harvested from sitemap, matching the established pattern.
 
 **2026-04-20 deltas (residual follow-ups from the 04-17 PLAN.md list):**
 - **newmar images**: 0 → **369** (+369). `_extract_image_urls` extended to accept extensionless CDN URLs (Scene7 `/is/image/`, Cloudinary `/image/upload/`, imgix, Shopify CDN) and HTML-decode `&amp;` in src attrs.
