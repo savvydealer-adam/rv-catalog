@@ -534,6 +534,15 @@ Only return null if the page is a top-level navigation/category listing that sho
 multiple DIFFERENT product lines (not floorplans of the same series), an about/blog/
 dealer page, or otherwise has no model-specific content.
 
+Floorplan specs are often rendered in an HTML <table>, a spec-sheet card, or a row of
+<li>/<dl>/<dt>/<dd> pairs. Common row labels: "Length", "Overall Length", "Exterior
+Length", "Sleeps", "Sleeping Capacity", "Dry Weight", "UVW", "Unloaded Vehicle Weight",
+"GVWR", "Gross Vehicle Weight", "Slides", "Slideouts", "Bathrooms". Parse these into
+`length_ft` (decimal feet — convert from "34' 8\"" or "34 ft 8 in" if needed),
+`sleeping_capacity` (int), `dry_weight_lbs` (int), `gvwr_lbs` (int),
+`slideout_count` (int), `bathroom_count` (int). Never skip a spec table just because it
+sits below the main text.
+
 HTML content:
 {html_clean}
 
@@ -588,6 +597,7 @@ Respond with ONLY the JSON, no markdown formatting."""
 
     def _extract_image_urls(self, html: str, page_url: str) -> list[str]:
         """Find candidate image URLs on the page (src + data-src + srcset)."""
+        import html as _html
         srcs: list[str] = []
         srcs.extend(re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html))
         # Lazy-load attributes commonly used on image-heavy OEM model pages.
@@ -600,13 +610,24 @@ Respond with ONLY the JSON, no markdown formatting."""
                 u = part.strip().split(" ")[0]
                 if u:
                     srcs.append(u)
+        # Known extensionless image-CDN URL shapes (Scene7, Cloudinary, imgix...).
+        cdn_patterns = (
+            "scene7.com/is/image/", "scene7.com/is/content/",
+            "/is/image/", "cloudinary.com/", "/image/upload/",
+            "imgix.net/", "imgkit.net/", "res.cloudinary.com/",
+            "cdn.shopify.com/s/files/",
+        )
         results = []
         for src in srcs:
-            src = src.strip()
+            src = _html.unescape(src.strip())
             if src.startswith("data:") or len(src) < 10:
                 continue
             full = urljoin(page_url, src)
-            if any(ext in full.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+            lu = full.lower()
+            has_ext = any(ext in lu for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"])
+            on_img_cdn = any(p in lu for p in cdn_patterns)
+            has_format_hint = "format=jpg" in lu or "format=png" in lu or "format=webp" in lu
+            if has_ext or on_img_cdn or has_format_hint:
                 results.append(full)
         return list(dict.fromkeys(results))
 
