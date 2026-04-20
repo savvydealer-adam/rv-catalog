@@ -4,13 +4,13 @@
 
 A standalone service that owns all RV manufacturer, model, and floorplan data. Dealer websites (STL RV, future sites) call this API instead of maintaining their own knowledge bases. Includes an admin dashboard for monitoring coverage across 60+ manufacturers.
 
-## Current State (2026-04-20, end of post-IPRoyal-bypass sweep — rounds 2-6)
+## Current State (2026-04-20, end of post-IPRoyal-bypass sweep — rounds 2-7)
 
-**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,244 models, 3,555 floorplans, 17,593 images**.
+**Coverage:** 93 manufacturers seeded, **83 with scraped data (100% of active)**, **1,277 models, 3,626 floorplans, 18,237 images**.
 (10 defunct: renegade, redwood, adventurer, regency, encore, cherokee-arctic-wolf, cherokee-grey-wolf, cherokee-wolf-pup, braxton-creek, sunset-park. **0 live brands still at 0 models.**)
 
-**2026-04-20 session deltas (5 enrichment rounds + newmar + coachmen + cleanup):**
-1,052 → 1,244 models (+192) · 2,264 → 3,555 floorplans (+1,291) · 10,666 → 17,593 images (+6,927).
+**2026-04-20 session deltas (6 enrichment rounds + newmar + coachmen + cleanup):**
+1,052 → 1,277 models (+225) · 2,264 → 3,626 floorplans (+1,362) · 10,666 → 18,237 images (+7,571).
 
 **Headline wins (rounds run with `CD_IPROYAL_USER= CD_IPROYAL_PASS=` after 402 quota exhaustion + ProxyError fallback):**
 
@@ -21,6 +21,7 @@ A standalone service that owns all RV manufacturer, model, and floorplan data. D
 | 4     | genesis-supreme, work-and-play, cedar-creek, gulf-stream, dutchmen, hiker, travel-lite, bowlus                 | +54     | +606 | +912  |
 | 5     | thor-motor-coach, northwood, stealth, pleasure-way, aliner, lance, keystone, cardinal                          | +19     | +233 | +1,826|
 | 6     | grand-design, airstream, brinkley, wildwood-rv, highland-ridge, r-pod, solera, coach-house                     | +27     | +49  | +1,315|
+| 7     | entegra, taxa, drv, midwest-auto, starcraft, american-coach, storyteller, nucamp                               | +27     | +70  | +632  |
 
 **Largest single-brand jumps:**
 - **thor-motor-coach**: 187 → 947 images (+760) — Scene7 CDN URLs from 3ade128 finally picked up
