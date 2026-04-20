@@ -446,6 +446,7 @@ class GenericScraper:
             html = await stealth_fetch(url, networkidle=True, settle_ms=1500)
         else:
             last_status = 0
+            proxy_blown = False
             for attempt in range(2):
                 try:
                     resp = await client.get(url, timeout=20.0)
@@ -466,8 +467,32 @@ class GenericScraper:
                         await asyncio.sleep(1)
                         continue
                     return None
+                except httpx.ProxyError as e:
+                    # IPRoyal ran out of quota / rejected auth / similar. Surface
+                    # it instead of silently returning None, and try once without
+                    # the proxy so a single dead proxy doesn't blackhole a run.
+                    proxy_blown = True
+                    print(
+                        f"[proxy] {url} via proxy failed: {type(e).__name__}: "
+                        f"{str(e)[:120]} -- retrying direct",
+                        flush=True,
+                    )
+                    break
                 except Exception:
                     return None
+
+            if proxy_blown:
+                try:
+                    async with httpx.AsyncClient(
+                        headers=HTTP_HEADERS, timeout=20.0, follow_redirects=True
+                    ) as direct:
+                        resp = await direct.get(url)
+                        if resp.status_code == 200:
+                            html = resp.text
+                        elif resp.status_code == 403:
+                            last_status = 403
+                except Exception:
+                    pass
 
             # WAF-blocked: try stealth if available
             if last_status == 403 and stealth_available():
