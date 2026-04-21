@@ -170,6 +170,25 @@ async def render_page(
 
     proxy = await _resolve_proxy(session, retry)
 
+    # Try with configured proxy first; if the proxy rejects (402/407/tunnel
+    # failures surface as ERR_TUNNEL_CONNECTION_FAILED /
+    # ERR_PROXY_CONNECTION_FAILED inside Playwright), retry once with no proxy.
+    html = await _goto_and_content(
+        url, wait_selector=wait_selector, timeout_ms=timeout_ms, proxy=proxy
+    )
+    if not html and proxy:
+        html = await _goto_and_content(
+            url, wait_selector=wait_selector, timeout_ms=timeout_ms, proxy=None
+        )
+    return html
+
+
+async def _goto_and_content(
+    url: str,
+    wait_selector: str | None,
+    timeout_ms: int,
+    proxy: dict | None,
+) -> str:
     async with _shared_browser() as browser:
         context_kwargs: dict = {
             "user_agent": (
@@ -188,8 +207,6 @@ async def render_page(
                 if wait_selector:
                     await page.wait_for_selector(wait_selector, timeout=8000)
                 else:
-                    # Some SPAs (cherokeerv etc.) hydrate slowly; wait longer
-                    # and additionally check that some anchor tags exist.
                     await page.wait_for_load_state("networkidle", timeout=15000)
                     try:
                         await page.wait_for_function(
@@ -200,8 +217,7 @@ async def render_page(
                         pass
             except Exception:
                 pass
-            html = await page.content()
-            return html
+            return await page.content()
         except Exception:
             return ""
         finally:

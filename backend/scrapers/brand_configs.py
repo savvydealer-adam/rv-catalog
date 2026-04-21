@@ -63,6 +63,7 @@ CONFIGS: dict[str, BrandConfig] = {
     # year-landing page). Seed the canonical /models/<slug> URLs harvested from
     # sitemap.xml 2026-04-17, skipping the /models/product/ legacy routes.
     "winnebago": {
+        "force_playwright": True,
         "model_urls": [
             "/models/adventurer",
             "/models/ekko",
@@ -314,13 +315,16 @@ CONFIGS: dict[str, BrandConfig] = {
             "/motorhomes",
         ],
     },
-    # Tiffin
+    # Tiffin — spec rows (dry_weight / gvwr / sleeps) are client-side hydrated
+    # into the /specifications/ page. Raw HTML returns a shell with 0 of those
+    # labels; Playwright render surfaces them.
     "tiffin": {
         "listing_pages": [
             "/diesel-motorhomes",
             "/gas-motorhomes",
             "/all-motorhomes",
         ],
+        "force_playwright": True,
     },
     # Crossroads RV
     "crossroads": {
