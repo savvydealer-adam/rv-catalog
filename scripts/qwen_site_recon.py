@@ -45,19 +45,10 @@ OUTPUT_PATH = Path(__file__).resolve().parent / "qwen_site_recon.json"
 # parallel (those are network-bound and benefit from concurrency).
 _qwen_lock = asyncio.Lock()
 
-_IPROYAL_HOST = os.getenv("CD_IPROYAL_HOST", "geo.iproyal.com:12321")
-
-
-def iproyal_httpx_proxy(session: str, retry: int = 0) -> str | None:
-    """Build an IPRoyal proxy URL for httpx. Rotating-residential plan:
-    per-request IP change, no session stickiness (suffix params trigger 407).
-    """
-    user = os.getenv("CD_IPROYAL_USER", "").strip()
-    pwd = os.getenv("CD_IPROYAL_PASS", "").strip()
-    if not user or not pwd:
-        return None
-    _ = session, retry
-    return f"http://{user}:{pwd}@{_IPROYAL_HOST}"
+# Recon proxy resolution delegates to the same home-proxy logic the scraper
+# uses (Tailscale-reachable proxy.py on main PC + Dell). Sticky per slug so
+# repeated fetches of the same site exit via the same ISP within a recon run.
+from backend.scrapers.base import proxy_url_for as _home_proxy_url
 
 
 def extract_anchors(html: str, base_url: str, limit: int = 200) -> list[dict]:
@@ -171,9 +162,10 @@ async def recon_brand(slug: str, name: str, website: str) -> dict:
     }
 
     try:
-        # Fetch raw (httpx) and rendered (Playwright) — both routed through
-        # the same sticky IPRoyal session so the site sees one residential IP.
-        proxy_url = iproyal_httpx_proxy(slug)
+        # Fetch raw (httpx) and rendered (Playwright). httpx routes through
+        # the home-proxy pool (sticky per slug). Playwright runs proxyless —
+        # see backend/scrapers/playwright_fetcher.py for rationale.
+        proxy_url = _home_proxy_url(slug)
         client_kwargs = dict(
             headers={
                 "User-Agent": (
@@ -290,9 +282,13 @@ async def main():
         print("No targets")
         return
 
-    proxy_on = bool(os.getenv("CD_IPROYAL_USER") and os.getenv("CD_IPROYAL_PASS"))
+    pool_raw = (
+        os.getenv("RV_HOME_PROXY_POOL", "").strip()
+        or os.getenv("CD_HOME_PROXY_POOL", "").strip()
+    )
+    pool_size = len([p for p in pool_raw.split(",") if p.strip()]) if pool_raw else 0
     print(f"Reconning {len(targets)} manufacturers with Qwen3:32b "
-          f"(concurrency={args.concurrency}, iproyal={'on' if proxy_on else 'off'})")
+          f"(concurrency={args.concurrency}, home_proxy_pool={pool_size})")
     print(f"Output: {OUTPUT_PATH}")
 
     sem = asyncio.Semaphore(args.concurrency)

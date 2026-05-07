@@ -296,7 +296,7 @@ CONFIGS: dict[str, BrandConfig] = {
         "force_stealth": True,
     },
     # Holiday Rambler: Akamai-style WAF returns 403 on plain httpx even with
-    # IPRoyal residential proxy. Forces stealth (puppeteer-real-browser) for
+    # a residential proxy. Forces stealth (puppeteer-real-browser) for
     # both listing + model pages. Confirmed 2026-04-17.
     "holiday-rambler": {
         "listing_pages": [

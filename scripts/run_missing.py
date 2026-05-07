@@ -1,7 +1,7 @@
 """Scrape every manufacturer with zero models.
 
-Uses IPRoyal automatically via base.py / playwright_fetcher.py when
-CD_IPROYAL_USER/CD_IPROYAL_PASS are set.
+Uses the Tailscale home-proxy pool automatically via base.py when
+RV_HOME_PROXY_POOL (or CD_HOME_PROXY_POOL) is set. IPRoyal was retired.
 
 Brands flagged `defunct=1` in the manufacturers table are skipped by default
 (dead domain / expired SSL / repurposed site). Pass --include-defunct to
@@ -82,9 +82,13 @@ async def main():
         print("ERROR: GEMINI_API_KEY env var not set")
         sys.exit(1)
 
-    proxy_on = bool(os.getenv("CD_IPROYAL_USER") and os.getenv("CD_IPROYAL_PASS"))
+    pool_raw = (
+        os.getenv("RV_HOME_PROXY_POOL", "").strip()
+        or os.getenv("CD_HOME_PROXY_POOL", "").strip()
+    )
+    pool_size = len([p for p in pool_raw.split(",") if p.strip()]) if pool_raw else 0
     print(f"Scraping {len(targets)} brands (concurrency={args.concurrency}, "
-          f"iproyal={'on' if proxy_on else 'off'})")
+          f"home_proxy_pool={pool_size} entries)")
 
     sem = asyncio.Semaphore(args.concurrency)
     results = []

@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
+import socket
 import time
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,19 +25,96 @@ from backend.scrapers.brand_configs import get_config
 from backend.scrapers.playwright_fetcher import render_page, PLAYWRIGHT_AVAILABLE
 from backend.scrapers.stealth_fetcher import stealth_fetch, stealth_available
 
+logger = logging.getLogger(__name__)
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-_IPROYAL_HOST = os.getenv("CD_IPROYAL_HOST", "geo.iproyal.com:12321")
+# Residential egress: a comma-separated list of http://host:port entries
+# pointing at proxy.py instances on Tailscale-reachable Windows boxes (main PC
+# on Comcast + Dell on Spectrum). Sticky per manufacturer slug so the same
+# brand consistently exits via the same ISP within a run; retry rotates.
+# Reads RV_HOME_PROXY_POOL first, falls back to CD_HOME_PROXY_POOL so the
+# value can be set once for both rv-catalog and comp-dashboard. IPRoyal was
+# retired in favor of this pool — reputation was poor on WAF sites and the
+# home pool proved 50x better on comp-dashboard.
+_PROXY_PROBE_TIMEOUT_S = float(os.getenv("RV_PROXY_PROBE_TIMEOUT", "1.0"))
+_PROXY_PROBE_TTL_S = float(os.getenv("RV_PROXY_PROBE_TTL", "60"))
+_proxy_probe_cache: dict[str, tuple[bool, float]] = {}
 
 
-def _iproyal_httpx_proxy() -> str | None:
-    """IPRoyal proxy URL for httpx, or None when creds absent."""
-    user = os.getenv("CD_IPROYAL_USER", "").strip()
-    pwd = os.getenv("CD_IPROYAL_PASS", "").strip()
-    if not user or not pwd:
+def _home_proxy_pool() -> list[str]:
+    raw = (
+        os.getenv("RV_HOME_PROXY_POOL", "").strip()
+        or os.getenv("CD_HOME_PROXY_POOL", "").strip()
+    )
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def _proxy_is_alive(proxy_url: str) -> bool:
+    """TCP-probe a proxy URL with a short timeout, with TTL caching."""
+    now = time.monotonic()
+    cached = _proxy_probe_cache.get(proxy_url)
+    if cached is not None:
+        alive, expires_at = cached
+        if expires_at > now:
+            return alive
+
+    parsed = urlparse(proxy_url)
+    host = parsed.hostname
+    port = parsed.port
+    if not host or not port:
+        logger.warning("Home-proxy entry has no host:port: %r", proxy_url)
+        _proxy_probe_cache[proxy_url] = (False, now + _PROXY_PROBE_TTL_S)
+        return False
+
+    alive = False
+    try:
+        with socket.create_connection((host, port), timeout=_PROXY_PROBE_TIMEOUT_S):
+            alive = True
+    except (TimeoutError, OSError) as exc:
+        logger.warning("Home proxy %s unreachable: %s", proxy_url, exc)
+
+    _proxy_probe_cache[proxy_url] = (alive, now + _PROXY_PROBE_TTL_S)
+    return alive
+
+
+def proxy_url_for(slug: str, retry: int = 0) -> str | None:
+    """Build a sticky home-proxy URL for the given manufacturer slug.
+
+    Sticky on slug so a brand's pages consistently exit via the same ISP
+    within a run (preserves any session cookies the OEM site may set).
+    ``retry`` rotates to the next entry. Each candidate is TCP-probed
+    (cached for 60s); a dead pool entry falls through to the next live
+    entry, then to direct egress.
+    """
+    pool = _home_proxy_pool()
+    if not pool:
         return None
-    return f"http://{user}:{pwd}@{_IPROYAL_HOST}"
+
+    n = len(pool)
+    base = zlib.crc32(slug.encode("utf-8")) & 0xFFFFFFFF
+    for offset in range(n):
+        idx = (base + retry + offset) % n
+        candidate = pool[idx]
+        if _proxy_is_alive(candidate):
+            if offset > 0:
+                logger.info(
+                    "Home-proxy %s dead, falling through to %s for slug=%s",
+                    pool[(base + retry) % n],
+                    candidate,
+                    slug,
+                )
+            return candidate
+
+    logger.warning(
+        "All %d home-proxy entries dead for slug=%s; using direct egress",
+        n,
+        slug,
+    )
+    return None
 
 # When a fetched page's content is smaller than this, assume it's JS-rendered
 # and fall back to Playwright. Most real model pages are 30KB+.
@@ -121,7 +201,7 @@ class GenericScraper:
             "timeout": 30.0,
             "follow_redirects": True,
         }
-        proxy_url = _iproyal_httpx_proxy()
+        proxy_url = proxy_url_for(self.slug)
         if proxy_url:
             client_kwargs["proxy"] = proxy_url
             client_kwargs["trust_env"] = False
@@ -468,9 +548,10 @@ class GenericScraper:
                         continue
                     return None
                 except httpx.ProxyError as e:
-                    # IPRoyal ran out of quota / rejected auth / similar. Surface
-                    # it instead of silently returning None, and try once without
-                    # the proxy so a single dead proxy doesn't blackhole a run.
+                    # Home proxy unreachable / refused. Surface it and try
+                    # once without the proxy so one dead node doesn't blackhole
+                    # a run. (TCP probe + 60s cache should keep us off dead
+                    # nodes; this is the belt-and-suspenders fallback.)
                     proxy_blown = True
                     print(
                         f"[proxy] {url} via proxy failed: {type(e).__name__}: "

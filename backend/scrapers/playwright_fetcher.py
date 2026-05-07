@@ -1,21 +1,17 @@
 """Playwright-based page fetcher for JS-heavy sites.
 
-Supports residential proxy routing via IPRoyal (primary) or a generic
-proxy pool. Each render can opt into a sticky per-session exit IP so that
-parallel scrapes of different brands crawl from distinct residential IPs.
+Playwright runs proxyless. Chromium's proxy-auth path is fragile against
+residential gateways (the IPRoyal era surfaced ERR_PROXY_AUTH_UNSUPPORTED /
+ERR_TUNNEL_CONNECTION_FAILED, and the same class of bug is untested against
+the home-proxy pool). The httpx path in `base.py` routes through the
+Tailscale home-proxy pool — that's where rotation happens. Playwright
+inherits whatever residential IP the host machine has (main PC = Comcast,
+Dell = Spectrum), which is fine for the JS-render fallback path.
 
 Env vars (all optional — absent = direct connection):
-  CD_IPROYAL_USER / CD_IPROYAL_PASS   IPRoyal residential gateway creds
-                                      (same secret names as competitive-dashboard).
-  CD_IPROYAL_HOST                     Gateway host:port (default geo.iproyal.com:12321)
-
   PROXY_POOL                          Newline/comma-separated proxy URLs
-                                      (fallback when IPRoyal creds not set).
-                                      http(s)://[user:pass@]host:port
-  PROXY_SERVER / PROXY_USERNAME / PROXY_PASSWORD
-                                      Single-endpoint fallback. Username may
-                                      include "{session}" which is replaced
-                                      with a random hex token per context.
+                                      (single explicit override, no auth).
+                                      http://host:port
 """
 
 from __future__ import annotations
@@ -23,10 +19,9 @@ from __future__ import annotations
 import asyncio
 import itertools
 import os
-import secrets
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse
 
 try:
     from playwright.async_api import async_playwright, Browser
@@ -40,31 +35,9 @@ _browser: "Browser | None" = None
 _proxy_cycle: itertools.cycle | None = None
 _proxy_cycle_lock = asyncio.Lock()
 
-_IPROYAL_HOST = os.getenv("CD_IPROYAL_HOST", "geo.iproyal.com:12321")
-
-
-def _iproyal_proxy(session: str | None, retry: int = 0) -> dict | None:
-    """Build a Playwright-shaped IPRoyal proxy dict.
-
-    This account is on rotating-residential (per-request IP change); session
-    and country suffixes are not supported and produce HTTP 407. We keep the
-    session/retry params on the signature for forward compatibility with
-    sticky-session plans.
-    """
-    user = os.getenv("CD_IPROYAL_USER", "").strip()
-    pwd = os.getenv("CD_IPROYAL_PASS", "").strip()
-    if not user or not pwd:
-        return None
-    _ = session, retry
-    return {
-        "server": f"http://{_IPROYAL_HOST}",
-        "username": user,
-        "password": pwd,
-    }
-
 
 def _parse_proxy_url(url: str) -> dict | None:
-    """Turn a proxy URL into Playwright's proxy dict shape."""
+    """Turn a proxy URL into Playwright's proxy dict shape (no auth)."""
     url = url.strip()
     if not url:
         return None
@@ -74,16 +47,11 @@ def _parse_proxy_url(url: str) -> dict | None:
     server = f"{parsed.scheme or 'http'}://{parsed.hostname}"
     if parsed.port:
         server += f":{parsed.port}"
-    proxy = {"server": server}
-    if parsed.username:
-        proxy["username"] = unquote(parsed.username)
-    if parsed.password:
-        proxy["password"] = unquote(parsed.password)
-    return proxy
+    return {"server": server}
 
 
 def _load_proxy_pool() -> list[dict]:
-    """Build the fallback proxy pool from PROXY_POOL / PROXY_SERVER env vars."""
+    """Optional manual override pool from PROXY_POOL env (no auth)."""
     pool: list[dict] = []
     raw_pool = os.getenv("PROXY_POOL", "").strip()
     if raw_pool:
@@ -91,23 +59,11 @@ def _load_proxy_pool() -> list[dict]:
             p = _parse_proxy_url(token)
             if p:
                 pool.append(p)
-
-    single = os.getenv("PROXY_SERVER", "").strip()
-    if single:
-        p = _parse_proxy_url(single)
-        if p:
-            user = os.getenv("PROXY_USERNAME", "").strip()
-            pw = os.getenv("PROXY_PASSWORD", "").strip()
-            if user:
-                p["username"] = user
-            if pw:
-                p["password"] = pw
-            pool.append(p)
     return pool
 
 
 async def _next_pool_proxy() -> dict | None:
-    """Pick the next proxy from the fallback pool (round-robin)."""
+    """Pick the next proxy from the manual override pool (round-robin)."""
     global _proxy_cycle
     async with _proxy_cycle_lock:
         if _proxy_cycle is None:
@@ -117,22 +73,7 @@ async def _next_pool_proxy() -> dict | None:
                 return None
             _proxy_cycle = itertools.cycle(pool)
         proxy = next(_proxy_cycle)
-    if not proxy:
-        return None
-    proxy = dict(proxy)
-    if "username" in proxy and "{session}" in proxy["username"]:
-        proxy["username"] = proxy["username"].replace(
-            "{session}", secrets.token_hex(6)
-        )
-    return proxy
-
-
-async def _resolve_proxy(session: str | None, retry: int) -> dict | None:
-    """IPRoyal first, fall back to generic pool."""
-    iproyal = _iproyal_proxy(session, retry)
-    if iproyal:
-        return iproyal
-    return await _next_pool_proxy()
+    return dict(proxy) if proxy else None
 
 
 @asynccontextmanager
@@ -156,27 +97,25 @@ async def render_page(
     url: str,
     wait_selector: str | None = None,
     timeout_ms: int = 20000,
-    session: str | None = None,
-    retry: int = 0,
+    session: str | None = None,  # noqa: ARG001 — kept for caller compat
+    retry: int = 0,  # noqa: ARG001
 ) -> str:
     """Fetch a URL with JS rendering. Returns fully rendered HTML.
 
-    session: sticky key for IPRoyal — same session -> same residential IP.
-             Use the manufacturer slug for per-brand stickiness.
-    retry:   increment to rotate to a fresh IP within the same session family.
+    Runs proxyless by default (see module docstring). PROXY_POOL is honored
+    only as a manual override — useful for one-off testing of explicit
+    upstream proxies that don't need auth.
     """
     if not PLAYWRIGHT_AVAILABLE:
         return ""
 
-    proxy = await _resolve_proxy(session, retry)
+    proxy = await _next_pool_proxy()
 
-    # Try with configured proxy first; if the proxy rejects (402/407/tunnel
-    # failures surface as ERR_TUNNEL_CONNECTION_FAILED /
-    # ERR_PROXY_CONNECTION_FAILED inside Playwright), retry once with no proxy.
     html = await _goto_and_content(
         url, wait_selector=wait_selector, timeout_ms=timeout_ms, proxy=proxy
     )
     if not html and proxy:
+        # Manual-override proxy refused; retry direct.
         html = await _goto_and_content(
             url, wait_selector=wait_selector, timeout_ms=timeout_ms, proxy=None
         )
