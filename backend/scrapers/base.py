@@ -938,6 +938,34 @@ Respond with ONLY the JSON, no markdown formatting."""
                 except Exception:
                     pass
 
+            # Roll up floorplan min/max into the model row for fields the
+            # model-level Gemini prompt does not request (bathroom_count,
+            # dry_weight_lbs, gvwr_lbs) and as a backstop for fields the
+            # prompt asks about but Gemini sometimes omits (length_ft,
+            # sleeping_capacity, slideout_count). COALESCE preserves any
+            # range Gemini did extract — only NULLs get filled.
+            for col in (
+                "length_ft",
+                "sleeping_capacity",
+                "slideout_count",
+                "bathroom_count",
+                "dry_weight_lbs",
+                "gvwr_lbs",
+            ):
+                db.execute(
+                    f"""UPDATE models SET
+                          {col}_min = COALESCE({col}_min, (
+                              SELECT MIN({col}) FROM floorplans
+                              WHERE model_id = ? AND {col} IS NOT NULL
+                          )),
+                          {col}_max = COALESCE({col}_max, (
+                              SELECT MAX({col}) FROM floorplans
+                              WHERE model_id = ? AND {col} IS NOT NULL
+                          ))
+                        WHERE id = ?""",
+                    (model_id, model_id, model_id),
+                )
+
         # Update denormalized counts
         counts = db.execute(
             """SELECT
