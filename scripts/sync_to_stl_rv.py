@@ -133,6 +133,59 @@ def parse_json_field(val: Any) -> Any:
         return val
 
 
+def _to_int(v: Any) -> int | None:
+    """Coerce to int. SQLite tolerates floats in INTEGER columns; Postgres
+    rejects them. Gemini extraction occasionally produces 1.5 in
+    bathroom_count when an OEM page says \"1.5 bathrooms.\""""
+    if v is None or isinstance(v, int) and not isinstance(v, bool):
+        return v
+    if isinstance(v, float):
+        return int(round(v))
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int_floor(v: Any) -> int | None:
+    """For *_min fields: round down so the lower bound stays inclusive."""
+    if v is None or isinstance(v, int) and not isinstance(v, bool):
+        return v
+    import math
+    if isinstance(v, float):
+        return int(math.floor(v))
+    try:
+        return int(math.floor(float(v)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int_ceil(v: Any) -> int | None:
+    """For *_max fields: round up so the upper bound stays inclusive."""
+    if v is None or isinstance(v, int) and not isinstance(v, bool):
+        return v
+    import math
+    if isinstance(v, float):
+        return int(math.ceil(v))
+    try:
+        return int(math.ceil(float(v)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _split_bath(bath: Any, half_bath: Any) -> tuple[int | None, int | None]:
+    """Floorplan bathroom split: rv-catalog occasionally has 1.5 in
+    bathroom_count (INTEGER column, but SQLite is dynamic). STL RV's
+    Postgres column is INT, with a separate half_bath flag. Promote the
+    fractional .5 into half_bath=1.
+    """
+    if bath is None:
+        return None, _to_int(half_bath)
+    if isinstance(bath, float) and bath != int(bath):
+        return int(bath), 1
+    return _to_int(bath), _to_int(half_bath)
+
+
 def diff_fields(existing: dict, desired: dict, fields: list[str]) -> dict:
     """Return only the keys whose values differ between existing and desired."""
     out: dict = {}
@@ -271,6 +324,14 @@ def sync_manufacturers(
         inserted = supa.insert_batch("manufacturers", new_rows)
         for row in inserted:
             by_name[row["name"]] = row
+    elif dry_run and new_rows:
+        # Synthetic negative IDs for would-be-inserted mfrs so downstream
+        # stages can preview model/floorplan/image linkage correctly.
+        synthetic = -1
+        for src in src_rows:
+            if src["name"] not in by_name:
+                by_name[src["name"]] = {"id": synthetic, "name": src["name"]}
+                synthetic -= 1
 
     print(f"  inserts={inserts}  updates={updates}  ({'dry-run' if dry_run else 'applied'})")
 
@@ -343,7 +404,7 @@ def sync_models(
         desired = {
             "manufacturer_id": mfr_id,
             "manufacturer_name": slug_to_name.get(slug),
-            "model_year": src["model_year"],
+            "model_year": _to_int(src["model_year"]),
             "model_name": src["model_name"],
             "series": src["series"],
             "rv_class": src["rv_class"],
@@ -351,17 +412,17 @@ def sync_models(
             "length_ft_min": src["length_ft_min"],
             "length_ft_max": src["length_ft_max"],
             "width_ft": src["width_ft"],
-            "gvwr_lbs_min": src["gvwr_lbs_min"],
-            "gvwr_lbs_max": src["gvwr_lbs_max"],
-            "dry_weight_lbs_min": src["dry_weight_lbs_min"],
-            "dry_weight_lbs_max": src["dry_weight_lbs_max"],
-            "sleeping_capacity_min": src["sleeping_capacity_min"],
-            "sleeping_capacity_max": src["sleeping_capacity_max"],
-            "slideout_count_min": src["slideout_count_min"],
-            "slideout_count_max": src["slideout_count_max"],
-            "bathroom_count_min": src["bathroom_count_min"],
-            "bathroom_count_max": src["bathroom_count_max"],
-            "base_msrp_usd": src["base_msrp_usd"],
+            "gvwr_lbs_min": _to_int_floor(src["gvwr_lbs_min"]),
+            "gvwr_lbs_max": _to_int_ceil(src["gvwr_lbs_max"]),
+            "dry_weight_lbs_min": _to_int_floor(src["dry_weight_lbs_min"]),
+            "dry_weight_lbs_max": _to_int_ceil(src["dry_weight_lbs_max"]),
+            "sleeping_capacity_min": _to_int_floor(src["sleeping_capacity_min"]),
+            "sleeping_capacity_max": _to_int_ceil(src["sleeping_capacity_max"]),
+            "slideout_count_min": _to_int_floor(src["slideout_count_min"]),
+            "slideout_count_max": _to_int_ceil(src["slideout_count_max"]),
+            "bathroom_count_min": _to_int_floor(src["bathroom_count_min"]),
+            "bathroom_count_max": _to_int_ceil(src["bathroom_count_max"]),
+            "base_msrp_usd": _to_int(src["base_msrp_usd"]),
             "chassis": src["chassis"],
             "engine": src["engine"],
             "fuel_type": src["fuel_type"],
@@ -454,22 +515,23 @@ def sync_floorplans(
         if stl_model_id is None:
             skipped_no_model += 1
             continue
+        bath_int, half_bath = _split_bath(src["bathroom_count"], src["half_bath"])
         desired = {
             "model_id": stl_model_id,
             "manufacturer_name": slug_to_name.get(src["manufacturer_slug"]),
             "model_name": src["model_name"],
-            "model_year": src["model_year"],
+            "model_year": _to_int(src["model_year"]),
             "floorplan_code": src["floorplan_code"],
             "floorplan_type": src["floorplan_type"],
             "length_ft": src["length_ft"],
             "width_ft": src["width_ft"],
             "interior_height_ft": src["interior_height_ft"],
-            "sleeping_capacity": src["sleeping_capacity"],
-            "slideout_count": src["slideout_count"],
+            "sleeping_capacity": _to_int(src["sleeping_capacity"]),
+            "slideout_count": _to_int(src["slideout_count"]),
             "bed_types": parse_json_field(src["bed_types"]),
-            "bathroom_count": src["bathroom_count"],
-            "half_bath": src["half_bath"],
-            "msrp_usd": src["msrp_usd"],
+            "bathroom_count": bath_int,
+            "half_bath": half_bath,
+            "msrp_usd": _to_int(src["msrp_usd"]),
             "standard_features": parse_json_field(src["standard_features"]),
             "source_url": src["source_url"],
         }
