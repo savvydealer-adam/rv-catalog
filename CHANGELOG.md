@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-13 20:24
+
+- scraper: classify floorplan vs exterior images by URL (3fd4b88)
+
+
 ## 2026-05-13 20:11
 
 - docs: resume-safe entry points + STL RV sync gap audit (6e897e8)
