@@ -14,7 +14,11 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
   - `GET /api/models`, `GET /api/models/{model_id}`, `GET /api/floorplans`, `GET /api/floorplans/{floorplan_id}`, and `GET /api/lookup?make=...&model=...&year=...` in `backend/routers/models.py`
   - `GET /api/scrape/runs`, `GET /api/scrape/active`, and `POST /api/scrape/trigger` in `backend/routers/scrape.py`
 - SQLite database path is `data/rv_catalog.db`. `backend/database.py` defines `parent_companies`, `manufacturers`, `models`, `floorplans`, `images`, and `scrape_runs`.
-- Current local DB counts verified on 2026-05-11: 93 manufacturers, 83 active manufacturers, 10 defunct manufacturers, 1,324 models, 3,650 floorplans, 18,484 images, and 448 scrape runs. Manufacturer scrape statuses are `complete:66`, `partial:16`, `error:3`, `defunct:8`.
+- Current local DB counts (2026-05-13): 93 manufacturers (83 active, 10
+  defunct), 1,324 models, 3,650 floorplans, 18,484 images, 448 scrape runs.
+  Manufacturer scrape statuses: `complete:66`, `partial:16`, `error:3`,
+  `defunct:8`. Image types: 16,123 `exterior` / 2,361 `floorplan` after the
+  2026-05-13 URL-based reclassification.
 - Dashboard is `dashboard/` with Vite/React/TypeScript. `dashboard/src/App.tsx` routes `/`, `/manufacturers`, `/manufacturers/:slug`, and `/scrape`; `dashboard/src/api.ts` calls the backend API; `dashboard/src/auth.tsx` handles Google Identity Services and development-mode bypass.
 - Scraper CLI is `scripts/run_scraper.py`: supports `--slug`, `--wave`, and `--all`, requires `GEMINI_API_KEY`, and calls `backend/scrapers/orchestrator.py`. Scrape runs are recorded in `scrape_runs`.
 - STL RV sync is `scripts/sync_to_stl_rv.py`: one-way SQLite to STL RV Supabase, diff-based and idempotent, with `--dry-run`, `--slug`, and `--skip-images`. Natural keys are manufacturer name, `(manufacturer_id, model_name, model_year)`, `(model_id, floorplan_code)`, and `(model_id, source_url)`.
@@ -32,13 +36,17 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
   already prefers `source_url` over `local_path`. See SESSION-LOG.md 2026-05-13
   for the audit that identified the actual blocker.
 - **`floorplans.image_url` is NOT a sync target.** Earlier STATE.md treated
-  this as a populating gap. Reality: the column is a per-floorplan image cache.
-  STL RV's `/api/floorplans/find-image` falls through `inventory_images` →
-  `kb_images` (filtered by `image_type='floorplan'`). rv-catalog has zero
-  `image_type='floorplan'` rows today — all 18,484 images are 'exterior'. Two
-  follow-ups: (a) scraper roadmap item to extract real floorplan PNGs; (b)
-  consider relaxing STL RV's filter to accept 'exterior' as a fallback so the
-  UI shows something instead of nothing.
+  this as a populating gap. Reality: the column is a per-floorplan image
+  cache. STL RV's `/api/floorplans/find-image` falls through
+  `inventory_images` → `kb_images` (filtered by `image_type='floorplan'`).
+  After the 2026-05-13 reclassification, the catalog now has 2,361 rows tagged
+  `image_type='floorplan'` (12.8% of 18,484), so STL RV's fallback path will
+  finally find images for ~30 brands once Task #1 unblocks the sync. The
+  remaining model-level lifestyle/exterior shots stay `image_type='exterior'`.
+  Backfill script: `scripts/reclassify_image_types.py`. Classifier mirrored
+  in `backend/scrapers/base.py::GenericScraper._classify_image_type` so
+  future scrapes tag correctly. DB backup at
+  `data/rv_catalog.db.bak.reclassify-20260513-*`.
 - Low-image active brands currently under 15 images: `shasta`, `crossroads`,
   `ember`, `outdoors-rv`, `scamp`, `bowlus`, `northern-lite`, `hiker`,
   `sandpiper`, `sierra`, `surveyor`, `xlr-toy-hauler`, `vengeance`.

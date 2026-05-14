@@ -1,5 +1,65 @@
 # Session Log
 
+## 2026-05-13 — Floorplan image classifier + 2,361-row backfill
+
+**Goal:** unblock STL RV's `/api/floorplans/find-image` consumer, which has
+been returning nothing for every model because rv-catalog had zero
+`image_type='floorplan'` rows. All 18,484 catalog images were hardcoded to
+`'exterior'` at insert time in `base.py::_persist`.
+
+**Approach:** URL-based classifier, no scraping change required. Same
+classifier in two places:
+- `backend/scrapers/base.py::GenericScraper._classify_image_type` —
+  used at insert time so future scrapes tag correctly.
+- `scripts/reclassify_image_types.py` — standalone, idempotent, dry-run
+  supported. Backfilled the existing 18,484 rows.
+
+**Classifier shape (after three rounds of false-positive analysis):**
+- Negate: `interior` anywhere in URL (catches Drupal's
+  `floorplan_interiors_thumb` image-style — 241 Alliance rows were misclassed
+  by the naive substring check).
+- Accept: `floorplan` / `floor-plan` / `floor_plan` token in the *filename*
+  (Alliance, Airstream, Brinkley, Coachmen, Forest River).
+- Accept: `/floorplans/` (plural) anywhere in URL — Grand Design, Brinkley,
+  Winnebago dynamic GetImage.ashx URLs (Image=/...../Floorplans/...png in
+  query string), KZ, Starcraft/Highland-Ridge `/uploads/rvs/floorplans/`.
+- Accept singular `/floorplan/` only when filename has none of `paint`,
+  `graphics`, `decor`, `swatch`, `lifestyle`, `-img-`, `_img-`, `img_`. The
+  singular path is used by Jayco/Starcraft/Highland-Ridge as a CMS upload
+  bucket for mixed content (paint schemes, feature shots, lifestyle photos);
+  Lance's CDN uses it cleanly with code-only filenames.
+
+**Verification before applying:**
+- Jayco: 51 URLs with `/floorplan/` token, classifier flagged 0 as
+  floorplan (all FPs correctly excluded — Jayco doesn't publish line-art
+  floorplan PNGs at all).
+- Lance/Grand Design/Brinkley/Airstream/Winnebago — all known TPs survive.
+- Final dry-run delta: 2,361 rows flip exterior → floorplan, no extras.
+
+**Apply:**
+- DB backup: `data/rv_catalog.db.bak.reclassify-20260513-202308` (7.7 MB).
+- `python scripts/reclassify_image_types.py` updated 2,361 rows.
+- Post-state: 16,123 exterior / 2,361 floorplan.
+
+**Top brands gaining floorplan rows:**
+grand-design 670, coachmen 292, forest-river 158, lance 107, kz 89,
+rockwood 82, flagstaff-rv 82, genesis-supreme 75, newmar 65, venture 55,
+east-to-west 48, airstream 46, highland-ridge 44, palomino 42,
+gulf-stream 36, prime-time 34, brinkley 31, fleetwood 26, tiffin 25,
+dynamax 22, holiday-rambler 21, cherokee-rv 19.
+
+**Files changed:**
+- `backend/scrapers/base.py` — added `_classify_image_type` classmethod and
+  rewired `_persist` to call it per-URL.
+- `scripts/reclassify_image_types.py` (new) — backfill, dry-run, --slug
+  scope, --db override.
+
+**Not done:**
+- Task #1 (drop NOT NULL on STL RV `kb_images.local_path`) still pending
+  Adam runs the SQL. Once dropped, the next sync run will push the 2,361
+  floorplan-tagged rows into STL RV and `/api/floorplans/find-image` will
+  start returning hits.
+
 ## 2026-05-13 — STL RV sync gap audit + resume-safe docs
 
 **Goal:** clear STATE.md's "What does NOT work" list.

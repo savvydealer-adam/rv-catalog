@@ -787,6 +787,66 @@ Respond with ONLY the JSON, no markdown formatting."""
         scored.sort()
         return [u for _, _, u in scored]
 
+    @staticmethod
+    def _classify_image_type(url: str) -> str:
+        """Classify an image URL as 'floorplan' or 'exterior'.
+
+        High-precision URL heuristic. Anything not matching falls through to
+        'exterior' (the historical default), so false negatives are the
+        conservative failure mode.
+
+        Reliable positives:
+        - `/floorplans/` (plural) in URL — content-based directory naming
+          (Grand Design, Brinkley, Winnebago, KZ, Forest River, ...).
+        - `floorplan` / `floor-plan` / `floor_plan` token in the *filename*
+          (Alliance, Airstream, Brinkley).
+        - `/floorplan/` (singular) in URL AND filename has no lifestyle/
+          decor markers — Lance's CDN uses singular but its filenames are
+          clean model codes (`1685-2026-sm.jpg`).
+        - `_fp_` or `-fp-` filename token.
+
+        Negations:
+        - `interior` anywhere in URL — almost always a Drupal/CMS image-style
+          name like `floorplan_interiors_thumb` applied to interior photos.
+        - Filename contains lifestyle/decor markers (`paint`, `graphics`,
+          `decor`, `swatch`, `lifestyle`, `-img-`) when relying on the
+          singular `/floorplan/` path. Jayco/Starcraft/Highland-Ridge use
+          `/uploads/rvs/years/floorplan/<id>-img-<year>_<feature>.<ext>`
+          as a CMS upload bucket for non-floorplan content.
+        """
+        u = url.lower()
+        if "interior" in u:
+            return "exterior"
+
+        # Filename = last path segment (ignore query string)
+        path = u.split("?", 1)[0]
+        filename = path.rsplit("/", 1)[-1]
+        filename_floorplan_token = (
+            "floorplan" in filename
+            or "floor-plan" in filename
+            or "floor_plan" in filename
+            or "_fp_" in filename
+            or "-fp-" in filename
+        )
+        if filename_floorplan_token:
+            return "floorplan"
+
+        # Plural path = content directory, high precision
+        if "/floorplans/" in u or "/floor-plans/" in u or "/floor_plans/" in u:
+            return "floorplan"
+
+        # Singular path is a CMS upload bucket on some OEMs; only accept it
+        # if the filename has none of the lifestyle/decor markers.
+        if "/floorplan/" in u or "/floor-plan/" in u or "/floor_plan/" in u:
+            fp_negation_tokens = (
+                "paint", "graphics", "decor", "swatch", "lifestyle",
+                "-img-", "_img-", "img_",
+            )
+            if not any(tok in filename for tok in fp_negation_tokens):
+                return "floorplan"
+
+        return "exterior"
+
     async def _call_gemini(self, prompt: str, max_retries: int = 2) -> str:
         """Call Gemini API with retry on rate limit."""
         if not GEMINI_API_KEY:
@@ -1007,14 +1067,24 @@ Respond with ONLY the JSON, no markdown formatting."""
                 except Exception:
                     pass
 
-            # Insert images
+            # Insert images. Image type is classified per-URL — floorplan
+            # PNGs (OEM line-art with codes like 28BH.png) live at distinct
+            # path prefixes vs hero/lifestyle exterior shots. STL RV's
+            # /api/floorplans/find-image relies on image_type='floorplan' to
+            # surface the right asset.
             for img_url in m.image_urls:
                 try:
                     db.execute(
                         """INSERT OR IGNORE INTO images
                            (model_id, manufacturer_slug, model_name, image_type, source_url)
-                           VALUES (?,?,?, 'exterior', ?)""",
-                        (model_id, self.slug, m.model_name, img_url),
+                           VALUES (?,?,?, ?, ?)""",
+                        (
+                            model_id,
+                            self.slug,
+                            m.model_name,
+                            self._classify_image_type(img_url),
+                            img_url,
+                        ),
                     )
                 except Exception:
                     pass
