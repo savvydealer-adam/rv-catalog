@@ -105,19 +105,33 @@ rv-catalog/
 
 ## API Endpoints (consumed by dealer websites)
 
+All `/api/*` routes except `/api/auth/config` require auth (Google ID token in
+production; dev mode auto-returns a stub user).
+
 ```
-GET  /api/manufacturers                    List all manufacturers
-GET  /api/manufacturers/{id}               Manufacturer detail + models
-GET  /api/models?make=X&year=Y&class=Z     Search models
-GET  /api/models/{id}                      Model detail + floorplans
-GET  /api/floorplans?model_id=X            Floorplans for a model
-GET  /api/floorplans/{id}                  Floorplan detail + specs
+GET  /api/auth/config                      Public OAuth config (client_id, environment)
+GET  /api/auth/me                          Current authenticated user
+
+GET  /api/manufacturers                    List all manufacturers (params: tier, parent, include_defunct)
+GET  /api/manufacturers/{slug}             Manufacturer detail + models (by slug, not id)
+
+GET  /api/models                           Search models (params: make, year, class, type)
+GET  /api/models/{model_id}                Model detail + floorplans (numeric id)
+GET  /api/floorplans                       Floorplans (params: model_id, make)
+GET  /api/floorplans/{floorplan_id}        Floorplan detail + specs
 GET  /api/lookup?make=X&model=Y&year=Z     Quick lookup (for inventory enrichment)
-GET  /api/images?model_id=X                Images for a model
+
 GET  /api/health                           Coverage stats for dashboard
-GET  /api/health/manufacturer/{id}         Per-manufacturer completeness
-POST /api/scrape/{manufacturer_slug}       Trigger scrape (admin, auth required)
+GET  /api/health/manufacturer/{slug}       Per-manufacturer completeness (by slug)
+
+GET  /api/scrape/runs                      Recent scrape runs (param: limit, default 50)
+GET  /api/scrape/active                    In-flight scrapes
+POST /api/scrape/trigger                   Trigger a scrape — body {slug: ...} or {wave: wave_1}
 ```
+
+No standalone images endpoint — image rows are bundled into the model/floorplan
+detail responses. If a dealer site needs raw image lists, hit
+`GET /api/models/{model_id}` and read the `images` field.
 
 ## Scraping Pipeline
 
