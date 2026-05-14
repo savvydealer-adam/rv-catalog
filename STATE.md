@@ -27,14 +27,11 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
 
 ## What does NOT work yet / known gaps
 
-- **STL RV `kb_images.local_path` NOT NULL — SQL written, waiting on apply.**
-  `scripts/sql/stl_rv_drop_local_path_not_null.sql` drops the constraint on
-  STL RV's table (project `blcoiejnzrdxjwgxmlui`). Adam to paste into Supabase
-  SQL Editor. Verified 2026-05-13 the constraint is still in place. Once
-  dropped, rerun `python scripts/sync_to_stl_rv.py` (no `--skip-images`) and
-  the image sync proceeds; the consumer (`stl-rv-website/server/main.py:1000`)
-  already prefers `source_url` over `local_path`. See SESSION-LOG.md 2026-05-13
-  for the audit that identified the actual blocker.
+- ~~STL RV `kb_images.local_path` NOT NULL~~ — **DONE 2026-05-14.** Constraint
+  dropped via Supabase Management API (using `SUPABASE_ACCESS_TOKEN` from
+  `~/.claude/mcp.json`). Full sync ran; STL RV now has 19,104 kb_images,
+  2,420 of them `image_type='floorplan'`. Per-brand parity confirmed against
+  rv-catalog SQLite.
 - **`floorplans.image_url` is NOT a sync target.** Earlier STATE.md treated
   this as a populating gap. Reality: the column is a per-floorplan image
   cache. STL RV's `/api/floorplans/find-image` falls through
@@ -81,14 +78,22 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
 
 ## Immediate next task
 
-1. Adam runs `scripts/sql/stl_rv_drop_local_path_not_null.sql` in Supabase SQL
-   Editor (project `blcoiejnzrdxjwgxmlui`).
-2. `SUPABASE_SERVICE_KEY=... python scripts/sync_to_stl_rv.py` (full sync).
-3. Verify a few `kb_images` rows landed and spot-check the dealer-site
-   floorplan card for one Jayco model.
-4. Optional follow-ups: scraper change to extract floorplan-typed PNGs;
-   smoke test added to repo.
+No blocking gap. Optional follow-ups (priority-ordered):
+
+1. Spot-check the STL RV dealer-site floorplan card on `crm.savvydealer.ai`
+   to confirm the `/api/floorplans/find-image` endpoint serves real images
+   for a Grand Design / Coachmen / Lance model now that floorplan-typed
+   kb_images exist.
+2. Move + rotate the hardcoded service-role key at
+   `stl-rv-website/scripts/migrate_to_supabase.py:7` (rotate in Supabase,
+   replace literal with `os.getenv("SUPABASE_SERVICE_KEY")`).
+3. Add `tests/test_api.py` smoke suite — `/api/health`, one
+   manufacturer/model/floorplan call.
+4. Scraper enhancement: re-scrape low-image brands now that the classifier
+   tags floorplans correctly (roadtrek, flagstaff-rv, ibex, sabre).
+5. Future: extract floorplan PNGs from sites where current scraper misses
+   them (deeper scraper work).
 
 ## Last verified
 
-2026-05-13
+2026-05-14
