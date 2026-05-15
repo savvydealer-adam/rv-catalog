@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-14 00:30
+
+- sync: NOT NULL dropped on STL RV kb_images.local_path, full image sync completed (0b373ad)
+
+
 ## 2026-05-13 20:24
 
 - scraper: classify floorplan vs exterior images by URL (3fd4b88)
