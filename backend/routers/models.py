@@ -1,7 +1,7 @@
 """Model and floorplan API routes."""
 
 import json
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from backend.database import get_db
 
@@ -60,7 +60,7 @@ def get_model(model_id: int):
     row = db.execute("SELECT * FROM models WHERE id = ?", (model_id,)).fetchone()
     if not row:
         db.close()
-        return {"error": "Not found"}, 404
+        raise HTTPException(status_code=404, detail="Not found")
 
     floorplans = db.execute(
         "SELECT * FROM floorplans WHERE model_id = ? ORDER BY floorplan_code", (model_id,)
@@ -103,7 +103,7 @@ def get_floorplan(floorplan_id: int):
     row = db.execute("SELECT * FROM floorplans WHERE id = ?", (floorplan_id,)).fetchone()
     if not row:
         db.close()
-        return {"error": "Not found"}, 404
+        raise HTTPException(status_code=404, detail="Not found")
 
     images = db.execute(
         "SELECT * FROM images WHERE floorplan_id = ? ORDER BY image_type", (floorplan_id,)
@@ -162,6 +162,7 @@ def lookup(
         return {"match": None, "floorplans": []}
 
     model_data = _model_row(row)
+    model_data["manufacturer_display"] = row["manufacturer_display"]
     floorplans = db.execute(
         "SELECT * FROM floorplans WHERE model_id = ?", (row["id"],)
     ).fetchall()

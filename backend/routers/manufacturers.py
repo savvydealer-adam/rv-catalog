@@ -1,7 +1,7 @@
 """Manufacturer API routes."""
 
 import json
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from backend.database import get_db
 
@@ -44,7 +44,7 @@ def get_manufacturer(slug: str):
     row = db.execute("SELECT * FROM manufacturers WHERE slug = ?", (slug,)).fetchone()
     if not row:
         db.close()
-        return {"error": "Not found"}, 404
+        raise HTTPException(status_code=404, detail="Not found")
 
     # Get models for this manufacturer
     models = db.execute(

@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS manufacturers (
     image_count       INTEGER DEFAULT 0,
     coverage_pct      REAL DEFAULT 0.0,
     rvia_member       INTEGER DEFAULT 1,
+    defunct           INTEGER DEFAULT 0,  -- 1 = retired brand (dead domain/expired SSL)
     notes             TEXT,
     created_at        TEXT NOT NULL DEFAULT (datetime('now','utc')),
     updated_at        TEXT NOT NULL DEFAULT (datetime('now','utc'))

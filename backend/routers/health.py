@@ -1,6 +1,6 @@
 """Health and coverage stats for the dashboard."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from backend.database import get_db
 
@@ -147,7 +147,7 @@ def manufacturer_health(slug: str):
     mfr = db.execute("SELECT * FROM manufacturers WHERE slug = ?", (slug,)).fetchone()
     if not mfr:
         db.close()
-        return {"error": "Not found"}, 404
+        raise HTTPException(status_code=404, detail="Not found")
 
     models = db.execute(
         "SELECT * FROM models WHERE manufacturer_slug = ?", (slug,)
