@@ -1,5 +1,53 @@
 # Session Log
 
+## 2026-10-14 — Smoke suite landed, 3 API bugs fixed, downstream sync verified live
+
+Session-driver tick (no human). Two of the three open next-tasks closed.
+
+**Verified live (Task #1):** `GET /api/knowledge/floorplan-image` on
+`https://stl-rv-prod-952362582307.us-central1.run.app` returns `source: "kb"`
+with real image URLs for Grand Design RV / Solitude 382WB, Coachmen RV /
+Phoenix, and Lance Camper / Lance Truck Campers; all three URLs resolve 200
+(image/jpeg, image/webp, image/jpeg). The 2026-05-14 full image sync is
+end-to-end confirmed. Note: the endpoint moved from `/api/floorplans/find-image`
+to `/api/knowledge/floorplan-image` in stl-rv-website; the old `crm.savvydealer.ai`
+URL in STATE.md was a different app (Savvy Dealer AI CRM) and is corrected.
+
+**Built (Task #3):** `tests/test_api.py` — 17 hermetic smoke tests (temp
+SQLite seeded from the real `SCHEMA_SQL`, dev-mode auth stub, no network).
+`python -m pytest tests/ -q` → 17 passed.
+
+**Bugs the suite caught (all fixed this session):**
+1. `backend/database.py` `SCHEMA_SQL` missing `manufacturers.defunct` — a
+   freshly created DB would 500 on every endpoint (all routers query
+   `COALESCE(defunct,0)`); the defensive try/except in
+   `manufacturers._mfr_row` was the workaround. DDL now declares
+   `defunct INTEGER DEFAULT 0`. Existing DBs are unaffected
+   (CREATE TABLE IF NOT EXISTS; the local DB already has the column).
+2. Four 404 paths (`health.manufacturer_health`,
+   `manufacturers.get_manufacturer`, `models.get_model`,
+   `models.get_floorplan`) returned the tuple
+   `({"error": "Not found"}, 404)` — FastAPI does not read a status code
+   from the return value, so these responded **200** with a JSON array
+   `[{"error": "Not found"}, 404]`. Now `HTTPException(status_code=404)`.
+   Dashboard `api.ts` does no 404 handling, so the change is safe.
+3. `/api/lookup` selected `mfr.display_name as manufacturer_display` but
+   `_model_row()` built a fixed-key dict and dropped it — the field never
+   reached the response. Now included on `match`.
+
+**Also:** committed the previously-untracked `secrets.manifest.json`
+(savvy-secrets manifest — secret names only, no values; tracked in the
+sibling stl-rv-website repo, safe by convention).
+
+**Verified:** 17/17 tests green; live curl checks on STL RV prod (3 brands,
+3 image URLs, all 200); real-DB API check via TestClient against
+`data/rv_catalog.db` (health totals 93/83/10/1324/3650/18484, all four 404
+paths return 404, lookup returns `manufacturer_display`).
+
+**Not done:** the hardcoded service-role key rotation (Task #2 — lives in
+stl-rv-website, needs a Supabase-side rotation); re-scrape of low-image
+brands (next-session prompt in STATE.md).
+
 ## 2026-05-14 — Dropped NOT NULL, full sync, end-to-end verified
 
 **The DDL I'd been "waiting on Adam to run" was runnable from this session

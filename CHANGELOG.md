@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-14 20:19
+
+- tests: API smoke suite (17 tests) + fix defunct DDL, 404 handling, lookup display field (820905a)
+
+
 ## 2026-05-14 00:30
 
 - sync: NOT NULL dropped on STL RV kb_images.local_path, full image sync completed (0b373ad)

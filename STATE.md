@@ -34,8 +34,10 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
   rv-catalog SQLite.
 - **`floorplans.image_url` is NOT a sync target.** Earlier STATE.md treated
   this as a populating gap. Reality: the column is a per-floorplan image
-  cache. STL RV's `/api/floorplans/find-image` falls through
-  `inventory_images` → `kb_images` (filtered by `image_type='floorplan'`).
+  cache. STL RV's consumer endpoint (now `/api/knowledge/floorplan-image` in
+  `stl-rv-website/server/main.py`, formerly `/api/floorplans/find-image`)
+  falls through `inventory_images` → `kb_images` (filtered by
+  `image_type='floorplan'`).
   After the 2026-05-13 reclassification, the catalog now has 2,361 rows tagged
   `image_type='floorplan'` (12.8% of 18,484), so STL RV's fallback path will
   finally find images for ~30 brands once Task #1 unblocks the sync. The
@@ -47,9 +49,19 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
 - Low-image active brands currently under 15 images: `shasta`, `crossroads`,
   `ember`, `outdoors-rv`, `scamp`, `bowlus`, `northern-lite`, `hiker`,
   `sandpiper`, `sierra`, `surveyor`, `xlr-toy-hauler`, `vengeance`.
-- No automated test suite. Verification is dashboard + `--dry-run` on sync.
-  TODO: at minimum a smoke test that hits `/api/health` and one
-  manufacturer/model/floorplan endpoint.
+- ~~No automated test suite.~~ **DONE 2026-10-14.** `tests/test_api.py` is a
+  hermetic smoke suite (17 tests): temp SQLite with the real schema + a small
+  seed, `ENVIRONMENT=development` (auth stub). Covers `/api/health`,
+  manufacturers, models, floorplans, `/api/lookup`, and `/api/auth/*`.
+  `python -m pytest tests/ -q` — no DB setup, no network, passes on a fresh
+  clone. The suite caught three real bugs, fixed the same day:
+  (1) `SCHEMA_SQL` was missing `manufacturers.defunct` — a freshly created
+  DB would 500 on every endpoint (routers query `COALESCE(defunct,0)`);
+  (2) all four 404 paths returned the **tuple** `({"error": "Not found"}, 404)`,
+  which FastAPI serializes as a 200 JSON array — now real
+  `HTTPException(404)`; (3) `/api/lookup` selected
+  `mfr.display_name as manufacturer_display` but `_model_row()` dropped it
+  from the response — now included in `match`.
 - `mcp/` is an empty placeholder for the future MCP wrapper called out in
   `PLAN.md` "Future". Not a bug; tracked here so it doesn't show up as a
   surprise.
@@ -80,20 +92,30 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
 
 No blocking gap. Optional follow-ups (priority-ordered):
 
-1. Spot-check the STL RV dealer-site floorplan card on `crm.savvydealer.ai`
-   to confirm the `/api/floorplans/find-image` endpoint serves real images
-   for a Grand Design / Coachmen / Lance model now that floorplan-typed
-   kb_images exist.
+1. ~~Spot-check the STL RV floorplan image endpoint.~~ **VERIFIED 2026-10-14
+   live.** `GET /api/knowledge/floorplan-image` on
+   `https://stl-rv-prod-952362582307.us-central1.run.app` returns
+   `{"source": "kb"}` with a real image URL for Grand Design RV (Solitude
+   382WB), Coachmen RV (Phoenix), and Lance Camper (Lance Truck Campers); all
+   three image URLs resolve 200 with valid image content types. Note: the old
+   `crm.savvydealer.ai` reference in this file was the wrong site (Savvy
+   Dealer AI CRM, a Replit SPA) — the STL RV dealer site is the Cloud Run
+   URL above. Caveat: the kb fallback is model-level — it returns the first
+   floorplan-typed image for the model, not one matching the requested
+   `floorplan_code` (code is embedded in the image URL; the consumer
+   `stl-rv-website` is responsible for exact-code matching).
 2. Move + rotate the hardcoded service-role key at
    `stl-rv-website/scripts/migrate_to_supabase.py:7` (rotate in Supabase,
-   replace literal with `os.getenv("SUPABASE_SERVICE_KEY")`).
-3. Add `tests/test_api.py` smoke suite — `/api/health`, one
-   manufacturer/model/floorplan call.
+   replace literal with `os.getenv("SUPABASE_SERVICE_KEY")`). This lives in
+   the `stl-rv-website` repo, not this one.
+3. ~~Add `tests/test_api.py` smoke suite.~~ **DONE 2026-10-14** (see gaps).
 4. Scraper enhancement: re-scrape low-image brands now that the classifier
    tags floorplans correctly (roadtrek, flagstaff-rv, ibex, sabre).
 5. Future: extract floorplan PNGs from sites where current scraper misses
    them (deeper scraper work).
 
+**Next-session prompt:** Resume rv-catalog at C:/Users/adam/rv-catalog — read STATE.md first; next concrete task is re-scraping the low-image brands (roadtrek, flagstaff-rv, ibex, sabre) via `python scripts/run_scraper.py --slug <slug>` (needs GEMINI_API_KEY from `.env`), then re-run `python scripts/sync_to_stl_rv.py --dry-run` and the smoke suite (`python -m pytest tests/ -q`).
+
 ## Last verified
 
-2026-05-14
+2026-10-14
