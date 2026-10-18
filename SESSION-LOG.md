@@ -1,5 +1,48 @@
 # Session Log
 
+## 2026-10-18 — Re-scraped 4 low-image brands; sync apply parked for approval
+
+Session-driver tick (no human). Executed the next-session prompt from
+2026-10-14: re-scrape the low-image brands, dry-run the STL RV sync, run the
+smoke suite.
+
+**Scraped** (`python scripts/run_scraper.py --slug <slug>`, `.env` keys):
+
+| slug | result | DB before → after (images) |
+|---|---|---|
+| roadtrek | 20/23 models, 400 imgs, 20 floorplans added, 156s | 88 → 368 |
+| flagstaff-rv | 8 found, **0 extracted**, 0 imgs, no errors, 79s | 169 (unchanged) |
+| ibex | 4/4 models, 12 imgs, 8 floorplans, 98s | 110 → 122 |
+| sabre | 11/11 models, 124 imgs, 11 floorplans, 172s | 290 → 346 |
+
+Catalog totals: 18,484 → 18,832 images; floorplan-type 2,361 → 2,372
+(+11, all roadtrek). `flagstaff-rv` scrape_status is now `partial` — the
+0-extraction result with no error list suggests a brand-site structure
+change; next step is site recon before re-running.
+
+**Sync dry-run** (pre-scrape baseline: kb_images inserts=0; post-scrape:
+kb_images **inserts=348**, models inserts=23 + 116 updates, floorplans
+inserts=31 + 196 updates, 0 deletes). Diff matches the scrape exactly.
+The sync script needs `SUPABASE_SERVICE_KEY`; it is NOT in `.env` and the
+JWT secrets in GCP (`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SERVICE_KEY_RV_INVENTORY`)
+belong to other Supabase projects (ref claims checked, not printed). The
+working key is `supabase-service-key-stl-rv` (new-format `sb_secret` API
+key) in GCP project `savvydealer-website` — inject via `savvy-secrets`
+`access_secret()`, never into a file.
+
+**Tests:** `python -m pytest tests/ -q` → 17 passed (unchanged; scrape
+doesn't touch code).
+
+**Not done (parked):** the apply (`python scripts/sync_to_stl_rv.py`) is a
+customer-facing write to the STL RV dealer site and the prompt only
+authorized the dry-run — parked via escalate for approval. Cloud Run
+redeploy of the catalog image (which bundles the DB) is also production
+and was not done.
+
+**Side note:** the stealth node bridge prints asyncio
+"Event loop is closed" `__del__` tracebacks on exit — cosmetic, every
+brand's scrape exited 0 with clean results.
+
 ## 2026-10-14 — Smoke suite landed, 3 API bugs fixed, downstream sync verified live
 
 Session-driver tick (no human). Two of the three open next-tasks closed.
