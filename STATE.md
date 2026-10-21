@@ -49,12 +49,22 @@ RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacture
 - Low-image active brands currently under 15 images: `shasta`, `crossroads`,
   `ember`, `outdoors-rv`, `scamp`, `bowlus`, `northern-lite`, `hiker`,
   `sandpiper`, `sierra`, `surveyor`, `xlr-toy-hauler`, `vengeance`.
-- **`flagstaff-rv` scrape extracts 0 models (2026-10-18).** Re-scrape found 8
-  model URLs but extracted 0 models / 0 images with no errors; its
-  `scrape_status` is now `partial`. Its existing data (169 images / 82
-  floorplan, from the last successful scrape) is intact in the DB. Likely a
-  brand-site structure change — needs site recon
-  (`scripts/qwen_site_recon.py`) before re-running.
+- ~~**`flagstaff-rv` scrape extracts 0 models (2026-10-18).**~~ **FIXED
+  2026-10-21.** Root cause: `forestriverinc.com` now Cloudflare-challenges
+  plain httpx *and* local headless Playwright ("Just a moment...", HTTP 403),
+  and the 2026 site rebuild moved model pages under `/rvs/travel-trailers/`
+  (old `/rvs/flagstaff-*` and root `/flagstaff-*` slugs soft-404 as HTTP 200).
+  Fixes: (1) `backend/scrapers/base.py` detects CF challenge interstitials
+  (`_is_cf_challenge`) and raises a visible `RuntimeError` when every fetcher
+  hands back the interstitial or a WAF block instead of silently dropping the
+  model to None; the stealth path gets one settle+retry on a challenge hit.
+  (2) `brand_configs.py` routes `flagstaff-rv` through the stealth node
+  (`force_stealth: True`) with the 8 current model URLs seeded from the live
+  entry page `/rvs/travel-trailers/flagstaff` (Hardside Pop-Up retired;
+  A-Frame and Tent are its successors). Re-scrape: 8/8 models extracted,
+  73 floorplans, 130 images, 0 errors (run `success`, 135s). DB: 169 → 299
+  images (212 exterior / 87 floorplan), 82 → 155 floorplans. Read-only
+  probe: `scripts/flagstaff_diagnose.py`.
 - ~~No automated test suite.~~ **DONE 2026-10-14.** `tests/test_api.py` is a
   hermetic smoke suite (17 tests): temp SQLite with the real schema + a small
   seed, `ENVIRONMENT=development` (auth stub). Covers `/api/health`,
@@ -119,17 +129,20 @@ No blocking gap. Optional follow-ups (priority-ordered):
    **DONE 2026-10-18.** roadtrek 88→368 images (+280; 11 new floorplan-type),
    sabre 290→346, ibex 110→122, flagstaff-rv unchanged (0 extracted — see
    gap). Catalog totals: 18,832 images / 2,372 floorplan-type.
-5. **PENDING HUMAN (parked 2026-10-18):** apply the STL RV sync — dry-run
-   shows kb_images inserts=348, models inserts=23, floorplans inserts=31
-   (0 deletes; models/floorplans also carry field updates). Apply command:
-   `python scripts/sync_to_stl_rv.py` with `SUPABASE_SERVICE_KEY` from GCP
-   secret `supabase-service-key-stl-rv` (project `savvydealer-website`).
-   Customer-facing write to the STL RV dealer site, so it waits for approval.
+5. **PENDING HUMAN (parked 2026-10-18; dry-run re-verified 2026-10-21):**
+   apply the STL RV sync — dry-run now shows kb_images inserts=478
+   (348 pre-flagstaff + 130 new), floorplans inserts=104 (+73), models
+   inserts=31 (+8); 0 deletes, models/floorplans also carry field updates.
+   Inject `SUPABASE_SERVICE_KEY` from GCP secret
+   `supabase-service-key-stl-rv` (project `savvydealer-website`) via
+   `savvy-secrets` `access_secret()`, then `python scripts/sync_to_stl_rv.py`;
+   confirm kb_images inserts=478 and re-run `python -m pytest tests/ -q`.
+   Customer-facing write to the STL RV dealer site — waits for approval.
 6. Future: extract floorplan PNGs from sites where current scraper misses
    them (deeper scraper work).
 
-**Next-session prompt:** Resume rv-catalog at C:/Users/adam/rv-catalog — read STATE.md first; the 2026-10-18 re-scrape landed (348 new images in the local catalog, dry-run diff verified). If the parked sync apply was approved: run `python scripts/sync_to_stl_rv.py` with `SUPABASE_SERVICE_KEY` from GCP secret `supabase-service-key-stl-rv`, confirm inserts=348 in kb_images, and re-run `python -m pytest tests/ -q`. If not: next task is flagstaff-rv site recon (0 models extracted on 2026-10-18 re-scrape).
+**Next-session prompt:** Resume rv-catalog at C:/Users/adam/rv-catalog — read STATE.md first. The flagstaff-rv 0-extract gap is CLOSED (2026-10-21: CF-challenge detection in base.py + stealth routing + re-seeded model URLs; re-scrape 8/8, +130 images). Only open item: the parked STL RV sync apply (customer-facing, awaiting human approval; dry-run re-verified 2026-10-21 at kb_images inserts=478 / floorplans 104 / models 31). If approved: inject `SUPABASE_SERVICE_KEY` from GCP secret `supabase-service-key-stl-rv` and run `python scripts/sync_to_stl_rv.py`, confirm inserts, re-run `python -m pytest tests/ -q`. Future: extract floorplan PNGs from sites where the scraper misses them.
 
 ## Last verified
 
-2026-10-18
+2026-10-21

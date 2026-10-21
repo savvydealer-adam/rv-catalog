@@ -120,6 +120,25 @@ def proxy_url_for(slug: str, retry: int = 0) -> str | None:
 # and fall back to Playwright. Most real model pages are 30KB+.
 JS_DETECTION_THRESHOLD = 15000
 
+# Cloudflare interstitial ("Just a moment...") markers. If a fetched page is
+# one of these, every downstream extractor (Gemini, image regex) just sees
+# challenge chrome and the model silently drops to None. Detect it so the
+# run reports the WAF block instead of a mysterious 0-extract.
+CF_CHALLENGE_MARKERS = (
+    "Just a moment",
+    "cf-chl",
+    "challenge-platform",
+    "turnstile",
+)
+
+
+def _is_cf_challenge(html: str) -> bool:
+    """Heuristic: is this a Cloudflare challenge page, not real content?"""
+    if not html:
+        return False
+    head = html[:4000].lower()
+    return any(marker in head for marker in CF_CHALLENGE_MARKERS)
+
 HTTP_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -385,7 +404,15 @@ class GenericScraper:
     ) -> str:
         """Fetch a page. Priority: stealth (WAF bypass) > playwright > httpx."""
         if force_stealth and stealth_available():
-            return await stealth_fetch(url, networkidle=True, settle_ms=2000)
+            html = await stealth_fetch(url, networkidle=True, settle_ms=2000)
+            if not html or _is_cf_challenge(html):
+                # Transient stealth miss (slow Chrome launch, CF rate-limit).
+                # One settle+retry before giving up.
+                await asyncio.sleep(2)
+                html2 = await stealth_fetch(url, networkidle=True, settle_ms=2000)
+                if html2 and len(html2) >= len(html or ""):
+                    html = html2
+            return html
 
         if force_playwright and PLAYWRIGHT_AVAILABLE:
             return await render_page(url, timeout_ms=15000)
@@ -522,10 +549,15 @@ class GenericScraper:
         force_stealth = self.config.get("force_stealth", False)
 
         html = ""
+        last_status = 0
         if force_stealth and stealth_available():
             html = await stealth_fetch(url, networkidle=True, settle_ms=1500)
+            if not html:
+                # Stealth bridge exists but returned nothing (Chrome down,
+                # timeout). Mark it as blocked so the empty-html path below
+                # surfaces it instead of a silent None.
+                last_status = 403
         else:
-            last_status = 0
             proxy_blown = False
             for attempt in range(2):
                 try:
@@ -578,6 +610,11 @@ class GenericScraper:
             # WAF-blocked: try stealth if available
             if last_status == 403 and stealth_available():
                 rendered = await stealth_fetch(url, networkidle=True, settle_ms=1500)
+                if _is_cf_challenge(rendered):
+                    # A first stealth hit sometimes lands on the challenge
+                    # page too; one settle+retry usually passes.
+                    await asyncio.sleep(2)
+                    rendered = await stealth_fetch(url, networkidle=True, settle_ms=1500)
                 if rendered:
                     html = rendered
 
@@ -589,7 +626,23 @@ class GenericScraper:
                 html = rendered
 
         if not html:
+            if last_status in (403, 429, 503):
+                # WAF-blocked with no working bypass. Surface it instead of a
+                # silent None (forestriverinc.com 2026-10-18: 8 URLs 403,
+                # stealth bridge down, run reported "0 extracted, no errors").
+                raise RuntimeError(
+                    f"fetch blocked on {url} (status {last_status}, "
+                    "stealth unavailable or returned nothing)"
+                )
             return None
+
+        if _is_cf_challenge(html):
+            # Every fetcher handed us the interstitial. Feeding it to Gemini
+            # would just return null and drop the model silently.
+            raise RuntimeError(
+                f"Cloudflare challenge on {url} (plain fetch, stealth and "
+                "Playwright all blocked) — stealth node must pass this domain"
+            )
 
         # Strip script/style content but keep structure
         html_clean = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)

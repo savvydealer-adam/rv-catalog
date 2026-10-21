@@ -28,6 +28,28 @@ class BrandConfig(TypedDict, total=False):
 
 
 CONFIGS: dict[str, BrandConfig] = {
+    # Flagstaff RV (on forestriverinc.com): Cloudflare challenges plain httpx
+    # and local headless Playwright ("Just a moment...", verified 2026-10-21).
+    # The stealth node passes. Route everything through it; base.py now
+    # surfaces (not swallows) the block if the stealth bridge is down.
+    # Model pages moved under /rvs/travel-trailers/ in the 2026 rebuild —
+    # the old /rvs/flagstaff-* URLs and the root-level /flagstaff-* slugs
+    # both soft-404 (rendered 404 page, HTTP 200). Seeded from the live
+    # entry page /rvs/travel-trailers/flagstaff on 2026-10-21. Hardside
+    # Pop-Up was retired; A-Frame and Tent are its successors.
+    "flagstaff-rv": {
+        "force_stealth": True,
+        "model_urls": [
+            "/rvs/travel-trailers/flagstaff-classic-travel-trailers",
+            "/rvs/travel-trailers/flagstaff-super-lite-travel-trailers",
+            "/rvs/travel-trailers/flagstaff-shamrock",
+            "/rvs/travel-trailers/flagstaff-e-pro",
+            "/rvs/travel-trailers/flagstaff-a-frame",
+            "/rvs/travel-trailers/flagstaff-tent",
+            "/rvs/travel-trailers/flagstaff-micro-lite",
+            "/rvs/travel-trailers/flagstaff-classic-fifth-wheels",
+        ],
+    },
     # Thor Motor Coach: Nuxt SPA. Category pages DO expose model hrefs once rendered
     # (/ace, /hurricane, etc.) but the link-card UI + aggressive client-side filtering
     # trip the AI classifier. Seed the 39 known model URLs directly (harvested

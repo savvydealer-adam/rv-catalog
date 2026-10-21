@@ -1,5 +1,49 @@
 # Session Log
 
+## 2026-10-21 — flagstaff-rv 0-extract gap closed (CF challenge + stealth + URL re-seed)
+
+Session-driver tick (no human). Completed the flagstaff-rv site recon left
+uncommitted by the prior tick (2026-10-21): verified the uncommitted base.py
++ brand_configs.py changes, ran the re-scrape, re-verified the sync dry-run.
+
+**Root cause (verified live):** `forestriverinc.com` Cloudflare-challenges
+plain httpx and local headless Playwright — every model URL returns HTTP 403
+"Title: Just a moment..." (~5.9KB interstitial), so Gemini saw challenge
+chrome and dropped all 8 models to None with no error. The 2026 site rebuild
+also moved model pages under `/rvs/travel-trailers/`; the old `/rvs/flagstaff-*`
+and root `/flagstaff-*` slugs soft-404 (rendered 404 page, HTTP 200). The
+stealth node (local puppeteer-real-browser) passes: a stealth fetch of the
+Shamrock page returns 146KB of real content, correct title, DAM images.
+
+**Changes (all landed this tick):**
+- `backend/scrapers/base.py` — CF challenge detection
+  (`CF_CHALLENGE_MARKERS` / `_is_cf_challenge`), one settle+retry on the
+  stealth path when a challenge is hit, and visible `RuntimeError`s when a
+  WAF block (403/429/503) or an interstitial reaches the extractor instead of
+  a silent model-drop.
+- `backend/scrapers/brand_configs.py` — `flagstaff-rv` config:
+  `force_stealth: True` + 8 model URLs seeded from the live entry page
+  `/rvs/travel-trailers/flagstaff` (discovery found the same 8). Hardside
+  Pop-Up retired; A-Frame and Tent are its successors.
+- `scripts/flagstaff_diagnose.py` (new) — read-only probe: replays discovery,
+  fetches each URL with the plain client, prints status/len/title.
+
+**Re-scrape** (`python scripts/run_scraper.py --slug flagstaff-rv`):
+8 found / 8 extracted, 73 floorplans added, 130 images, 0 errors, 135.4s,
+run `success`. DB: flagstaff-rv 169 -> 299 images (212 exterior / 87
+floorplan), 82 -> 155 floorplans, `scrape_status` `partial` -> `complete`.
+Catalog: 18,832 -> 18,962 images; floorplan-type 2,372 -> 2,377.
+
+**Verified:** `python -m pytest tests/ -q` -> 17 passed (base.py changes
+green). Sync dry-run (key injected via `savvy-secrets`
+`access_secret('supabase-service-key-stl-rv')`, never written to a file):
+kb_images inserts 348 -> **478** (+130), floorplans 31 -> **104** (+73),
+models 23 -> **31** (+8), 0 deletes — diff matches the scrape exactly.
+
+**Still parked:** the sync apply is a customer-facing write to the STL RV
+dealer site — waits for the human approval parked 2026-10-18. Not applied.
+
+
 ## 2026-10-18 — Re-scraped 4 low-image brands; sync apply parked for approval
 
 Session-driver tick (no human). Executed the next-session prompt from
