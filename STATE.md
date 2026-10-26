@@ -129,11 +129,15 @@ No blocking gap. Optional follow-ups (priority-ordered):
    **DONE 2026-10-18.** roadtrek 88→368 images (+280; 11 new floorplan-type),
    sabre 290→346, ibex 110→122, flagstaff-rv unchanged (0 extracted — see
    gap). Catalog totals: 18,832 images / 2,372 floorplan-type.
-5. **PENDING HUMAN (parked 2026-10-18; dry-run re-verified 2026-10-21):**
+5. **PENDING HUMAN (re-parked 2026-10-26 in #claude-ops; dry-run re-verified
+   2026-10-21 and again 2026-10-26 — identical diff, no drift):**
    apply the STL RV sync — dry-run now shows kb_images inserts=478
    (348 pre-flagstaff + 130 new), floorplans inserts=104 (+73), models
-   inserts=31 (+8); 0 deletes, models/floorplans also carry field updates.
-   Inject `SUPABASE_SERVICE_KEY` from GCP secret
+   inserts=31 (+8); 0 deletes, models/floorplans also carry field updates
+   (models updates=116, floorplans updates=196). The 2026-10-18 park's TTL
+   lapsed with zero replies, so it was re-parked 2026-10-26 (escalate.py,
+   channel C0BAUTCAT0Q, ts 1793004629.975179). If approved: inject
+   `SUPABASE_SERVICE_KEY` from GCP secret
    `supabase-service-key-stl-rv` (project `savvydealer-website`) via
    `savvy-secrets` `access_secret()`, then `python scripts/sync_to_stl_rv.py`;
    confirm kb_images inserts=478 and re-run `python -m pytest tests/ -q`.
@@ -141,8 +145,8 @@ No blocking gap. Optional follow-ups (priority-ordered):
 6. Future: extract floorplan PNGs from sites where current scraper misses
    them (deeper scraper work).
 
-**Next-session prompt:** Resume rv-catalog at C:/Users/adam/rv-catalog — read STATE.md first. The flagstaff-rv 0-extract gap is CLOSED (2026-10-21: CF-challenge detection in base.py + stealth routing + re-seeded model URLs; re-scrape 8/8, +130 images). Only open item: the parked STL RV sync apply (customer-facing, awaiting human approval; dry-run re-verified 2026-10-21 at kb_images inserts=478 / floorplans 104 / models 31). If approved: inject `SUPABASE_SERVICE_KEY` from GCP secret `supabase-service-key-stl-rv` and run `python scripts/sync_to_stl_rv.py`, confirm inserts, re-run `python -m pytest tests/ -q`. Future: extract floorplan PNGs from sites where the scraper misses them.
+**Next-session prompt:** Resume rv-catalog at C:/Users/adam/rv-catalog — read STATE.md first. All code gaps are closed; the ONLY open item is the STL RV sync apply, re-parked 2026-10-26 in #claude-ops (channel C0BAUTCAT0Q, ts 1793004629.975179) because it is a customer-facing write to the live dealer site and the 10-18 park lapsed with zero replies. The dry-run diff was re-verified 2026-10-26 (identical to 10-21: models inserts=31 updates=116, floorplans inserts=104 updates=196, kb_images inserts=478, 0 deletes) and `python -m pytest tests/ -q` passed 17/17. Check the #claude-ops thread / pending-decision journal for a reply: if approved, inject `SUPABASE_SERVICE_KEY` from GCP secret `supabase-service-key-stl-rv` (project `savvydealer-website`) via savvy-secrets and run `python scripts/sync_to_stl_rv.py` (or `--slug <brand>` if the single-brand option was picked), confirm the inserts, re-run the tests, mark item 5 done. Otherwise: no work — do not re-park (TTL 48h); just note the dry-run if it has drifted. Future: extract floorplan PNGs from sites where the scraper misses them.
 
 ## Last verified
 
-2026-10-21
+2026-10-26
