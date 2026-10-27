@@ -4,6 +4,10 @@
 
 RV Catalog is a standalone FastAPI + React/Vite service that owns RV manufacturer, model, floorplan, and image data for dealer-site reuse. It is actively in development/ops: the local SQLite catalog is populated, the Cloud Run deployment config exists, and the most recent work is the STL RV Supabase sync/image-flow follow-up.
 
+> **2026-10-27:** STL RV's database is moving off hosted Supabase to the ops-01 self-hosted Supabase
+> (`https://sb.savvycdn.us`, schema `stlrv`; copied, not cut over). After cutover run the sync with
+> `SUPABASE_URL=https://sb.savvycdn.us SUPABASE_SCHEMA=stlrv SUPABASE_SERVICE_KEY=<GSM savvy-comms-vps-service-role-key>`.
+
 ## What's built and wired
 
 - FastAPI app entry point is `backend/main.py` (`backend.main:app`). It initializes SQLite through `backend/database.py`, mounts built dashboard assets from `dashboard/dist` when present, exposes `/api-docs` in development only, and runs on `PORT` with default `8080`.

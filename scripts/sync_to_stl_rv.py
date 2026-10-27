@@ -16,6 +16,8 @@ fields -> PATCH the diff. Identical row -> skip.
 Env:
   SUPABASE_URL           default: https://blcoiejnzrdxjwgxmlui.supabase.co
   SUPABASE_SERVICE_KEY   required (PostgREST service-role JWT)
+  SUPABASE_SCHEMA        "stlrv" on the ops-01 self-hosted Supabase (https://sb.savvycdn.us);
+                         empty = hosted Supabase "public"
 
 Usage:
   python scripts/sync_to_stl_rv.py --dry-run             # diff, no writes
@@ -50,9 +52,10 @@ PAGE = 1000
 
 
 class Supa:
-    def __init__(self, url: str, key: str):
+    def __init__(self, url: str, key: str, schema: str = ""):
         self.url = url.rstrip("/")
         self.key = key
+        self.schema = schema
 
     def _req(
         self,
@@ -64,6 +67,10 @@ class Supa:
         req = urllib.request.Request(f"{self.url}/rest/v1/{path}", method=method)
         req.add_header("apikey", self.key)
         req.add_header("Authorization", f"Bearer {self.key}")
+        if self.schema:
+            # PostgREST schema selection: Accept-Profile for reads, Content-Profile for writes.
+            req.add_header("Accept-Profile", self.schema)
+            req.add_header("Content-Profile", self.schema)
         req.add_header("Content-Type", "application/json")
         if prefer:
             req.add_header("Prefer", prefer)
@@ -657,16 +664,20 @@ def main() -> int:
     if not key:
         print("ERROR: SUPABASE_SERVICE_KEY env var not set", file=sys.stderr)
         return 1
+    schema = os.getenv("SUPABASE_SCHEMA", "").strip()
+    if not schema and not url.rstrip("/").endswith(".supabase.co"):
+        print("ERROR: SUPABASE_SCHEMA (stlrv) not set for a self-hosted SUPABASE_URL", file=sys.stderr)
+        return 1
 
     db_path = Path(args.db)
     if not db_path.is_file():
         print(f"ERROR: rv-catalog DB not found: {db_path}", file=sys.stderr)
         return 1
 
-    supa = Supa(url, key)
+    supa = Supa(url, key, schema)
     sql = sqlite3.connect(db_path)
 
-    print(f"sync rv-catalog ({db_path}) -> STL RV ({url})")
+    print(f"sync rv-catalog ({db_path}) -> STL RV ({url}{f', schema={schema}' if schema else ''})")
     print(f"mode: {'DRY-RUN' if args.dry_run else 'APPLY'}"
           f"{f', slug={args.slug}' if args.slug else ''}"
           f"{', skip-images' if args.skip_images else ''}")

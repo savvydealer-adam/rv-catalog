@@ -1,5 +1,12 @@
 # Session Log
 
+## 2026-10-27 — sync_to_stl_rv.py: SUPABASE_SCHEMA support (STL RV DB moving to ops-01)
+
+- STL RV's DB was copied to the ops-01 self-hosted Supabase (`https://sb.savvycdn.us`, schema `stlrv`); not cut over yet.
+- `scripts/sync_to_stl_rv.py` now reads `SUPABASE_SCHEMA` and sends `Accept-Profile`/`Content-Profile`; a
+  self-hosted URL without a schema exits 1. Unset = hosted behaviour.
+- Verified: `--dry-run --slug jayco` identical on both DBs (90 floorplans / 721 kb_images, 0 inserts / 0 updates).
+
 ## 2026-10-21 — flagstaff-rv 0-extract gap closed (CF challenge + stealth + URL re-seed)
 
 Session-driver tick (no human). Completed the flagstaff-rv site recon left
