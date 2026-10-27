@@ -1,5 +1,12 @@
 # Session Log
 
+## 2026-10-27 — sync_to_stl_rv.py: direct Postgres (STL RV off Supabase)
+
+- `Supa` REST client replaced by `StlRvDb` (psycopg 3, `STLRV_DATABASE_URL`, schema `stlrv`); same 3 methods, rows
+  built by `json_agg` so diffs compare as before. Full `--dry-run` identical to the previous REST version over the same
+  data (mfrs 0/0, models 31/116, floorplans 104/196, images 478/0 inserts/updates). Those pending changes are the
+  earlier parked apply decision, not new.
+
 ## 2026-10-27 — sync_to_stl_rv.py: SUPABASE_SCHEMA support (STL RV DB moving to ops-01)
 
 - STL RV's DB was copied to the ops-01 self-hosted Supabase (`https://sb.savvycdn.us`, schema `stlrv`); not cut over yet.

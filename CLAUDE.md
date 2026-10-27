@@ -44,7 +44,7 @@ data/rv_catalog.db       SQLite catalog (bundled into the image)
 scripts/
   run_scraper.py         CLI: --slug, --wave, --all (needs GEMINI_API_KEY)
   run_missing.py         Backfill brands with 0 models
-  sync_to_stl_rv.py      One-way SQLite -> STL RV Supabase (`blcoiejnzrdxjwgxmlui`)
+  sync_to_stl_rv.py      One-way SQLite -> STL RV Postgres (ops-01 stlrv-pg)
   qwen_site_recon.py     Ollama-powered site structure analysis
   sql/                   One-shot DDL helpers for downstream Supabases
   stealth/               Node project: puppeteer-real-browser CLI
@@ -61,9 +61,9 @@ ENVIRONMENT=development python -m uvicorn backend.main:app --reload
 # Scrape one brand:
 GEMINI_API_KEY=... python scripts/run_scraper.py --slug jayco
 
-# Sync catalog to STL RV (production Supabase):
-SUPABASE_SERVICE_KEY=... python scripts/sync_to_stl_rv.py            # full
-SUPABASE_SERVICE_KEY=... python scripts/sync_to_stl_rv.py --dry-run --slug jayco
+# Sync catalog to STL RV (ops-01 stlrv-pg; URL = GSM stl-rv-database-url):
+STLRV_DATABASE_URL=... python scripts/sync_to_stl_rv.py            # full
+STLRV_DATABASE_URL=... python scripts/sync_to_stl_rv.py --dry-run --slug jayco
 ```
 
 No standalone test suite yet — verification is done via `--dry-run` on the sync

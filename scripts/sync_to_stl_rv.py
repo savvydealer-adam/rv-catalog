@@ -1,4 +1,4 @@
-"""Sync rv-catalog SQLite -> STL RV Supabase.
+"""Sync rv-catalog SQLite -> STL RV Postgres (ops-01 stlrv-pg, schema stlrv).
 
 One-way: rv-catalog is the source of truth for OEM data, STL RV's KB tables
 are the sink. STL RV's admin UI keeps using its existing /api/knowledge/*
@@ -14,10 +14,7 @@ Never deletes. New brand from rv-catalog -> insert. Existing row with changed
 fields -> PATCH the diff. Identical row -> skip.
 
 Env:
-  SUPABASE_URL           default: https://blcoiejnzrdxjwgxmlui.supabase.co
-  SUPABASE_SERVICE_KEY   required (PostgREST service-role JWT)
-  SUPABASE_SCHEMA        "stlrv" on the ops-01 self-hosted Supabase (https://sb.savvycdn.us);
-                         empty = hosted Supabase "public"
+  STLRV_DATABASE_URL     required; GSM secret `stl-rv-database-url` (TLS, role stlrv_app)
 
 Usage:
   python scripts/sync_to_stl_rv.py --dry-run             # diff, no writes
@@ -33,13 +30,12 @@ import os
 import sqlite3
 import sys
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any
 
-DEFAULT_SUPABASE_URL = "https://blcoiejnzrdxjwgxmlui.supabase.co"
+import psycopg
+from psycopg import sql as pgsql
+
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "rv_catalog.db"
 
 INSERT_BATCH = 100
@@ -47,83 +43,65 @@ PAGE = 1000
 
 
 # ---------------------------------------------------------------------------
-# Supabase REST client
+# STL RV Postgres client (ops-01 stlrv-pg, schema stlrv)
 # ---------------------------------------------------------------------------
 
 
-class Supa:
-    def __init__(self, url: str, key: str, schema: str = ""):
-        self.url = url.rstrip("/")
-        self.key = key
-        self.schema = schema
+class StlRvDb:
+    """Direct Postgres access to the STL RV database. Rows come back as JSON built by
+    Postgres (json_agg), so values compare exactly like the old REST responses did."""
 
-    def _req(
-        self,
-        method: str,
-        path: str,
-        body: Any = None,
-        prefer: str | None = None,
-    ) -> Any:
-        req = urllib.request.Request(f"{self.url}/rest/v1/{path}", method=method)
-        req.add_header("apikey", self.key)
-        req.add_header("Authorization", f"Bearer {self.key}")
-        if self.schema:
-            # PostgREST schema selection: Accept-Profile for reads, Content-Profile for writes.
-            req.add_header("Accept-Profile", self.schema)
-            req.add_header("Content-Profile", self.schema)
-        req.add_header("Content-Type", "application/json")
-        if prefer:
-            req.add_header("Prefer", prefer)
-        data = json.dumps(body).encode("utf-8") if body is not None else None
-        try:
-            with urllib.request.urlopen(req, data=data, timeout=60) as r:
-                raw = r.read()
-                if not raw:
-                    return None
-                return json.loads(raw)
-        except urllib.error.HTTPError as e:
-            msg = e.read().decode("utf-8", errors="replace")[:500]
-            raise RuntimeError(
-                f"{method} {path} -> HTTP {e.code}: {msg}"
-            ) from None
+    def __init__(self, dsn: str, schema: str = "stlrv"):
+        self.schema = schema
+        self.conn = psycopg.connect(dsn, autocommit=True)
+
+    def _table(self, table: str) -> pgsql.Composed:
+        return pgsql.SQL("{}.{}").format(pgsql.Identifier(self.schema), pgsql.Identifier(table))
 
     def select_all(self, table: str, columns: str = "*", filters: str = "") -> list[dict]:
-        """Fetch every row of a table (paginated)."""
-        out: list[dict] = []
-        offset = 0
-        while True:
-            qs = f"select={columns}"
-            if filters:
-                qs += f"&{filters}"
-            qs += f"&limit={PAGE}&offset={offset}&order=id.asc"
-            rows = self._req("GET", f"{table}?{qs}")
-            if not rows:
-                return out
-            out.extend(rows)
-            if len(rows) < PAGE:
-                return out
-            offset += PAGE
+        """Fetch every row of a table, ordered by id. `filters` supports `col=in.(a,b)`."""
+        cols = pgsql.SQL("*") if columns.strip() == "*" else pgsql.SQL(", ").join(
+            pgsql.Identifier(c.strip()) for c in columns.split(",") if c.strip()
+        )
+        where, args = pgsql.SQL(""), []
+        if filters:
+            column, _, expr = filters.partition("=")
+            if not expr.startswith("in.(") or not expr.endswith(")"):
+                raise ValueError(f"unsupported filter: {filters}")
+            values = [v.strip().strip('"') for v in expr[4:-1].split(",") if v.strip()]
+            where = pgsql.SQL(" WHERE {}::text = ANY(%s)").format(pgsql.Identifier(column))
+            args = [values]
+        query = pgsql.SQL(
+            "SELECT coalesce(json_agg(t), '[]'::json) FROM (SELECT {} FROM {}{} ORDER BY id) t"
+        ).format(cols, self._table(table), where)
+        return self.conn.execute(query, args).fetchone()[0]
 
     def insert_batch(self, table: str, rows: list[dict]) -> list[dict]:
         """INSERT and return the inserted rows (with ids)."""
-        if not rows:
-            return []
         result: list[dict] = []
         for i in range(0, len(rows), INSERT_BATCH):
             chunk = rows[i : i + INSERT_BATCH]
-            inserted = self._req(
-                "POST", table, body=chunk, prefer="return=representation"
-            )
-            if inserted:
-                result.extend(inserted)
+            cols = pgsql.SQL(", ").join(pgsql.Identifier(k) for k in sorted({k for r in chunk for k in r}))
+            query = pgsql.SQL(
+                "WITH ins AS (INSERT INTO {t} ({c}) SELECT {c} FROM json_populate_recordset(NULL::{t}, %s::json) "
+                "RETURNING *) SELECT coalesce(json_agg(ins), '[]'::json) FROM ins"
+            ).format(t=self._table(table), c=cols)
+            result.extend(self.conn.execute(query, [json.dumps(chunk, default=str)]).fetchone()[0])
         return result
 
     def patch(self, table: str, row_id: int, patch: dict) -> None:
         if not patch:
             return
-        self._req(
-            "PATCH", f"{table}?id=eq.{row_id}", body=patch, prefer="return=minimal"
+        keys = list(patch)
+        query = pgsql.SQL(
+            "UPDATE {t} AS t SET ({c}) = ROW({s}) FROM json_populate_record(NULL::{t}, %s::json) AS src "
+            "WHERE t.id = %s"
+        ).format(
+            t=self._table(table),
+            c=pgsql.SQL(", ").join(pgsql.Identifier(k) for k in keys),
+            s=pgsql.SQL(", ").join(pgsql.SQL("src.{}").format(pgsql.Identifier(k)) for k in keys),
         )
+        self.conn.execute(query, [json.dumps(patch, default=str), row_id])
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +259,7 @@ IMAGE_COLS = [
 
 
 def sync_manufacturers(
-    sql: sqlite3.Connection, supa: Supa, dry_run: bool, slug_filter: str | None
+    sql: sqlite3.Connection, supa: StlRvDb, dry_run: bool, slug_filter: str | None
 ) -> dict[str, int]:
     """Returns {mfr_slug -> stl_rv_manufacturer_id} after sync."""
     print("\n=== manufacturers ===")
@@ -353,7 +331,7 @@ def sync_manufacturers(
 
 def sync_models(
     sql: sqlite3.Connection,
-    supa: Supa,
+    supa: StlRvDb,
     dry_run: bool,
     slug_to_mfrid: dict[str, int],
     slug_filter: str | None,
@@ -481,7 +459,7 @@ def sync_models(
 
 def sync_floorplans(
     sql: sqlite3.Connection,
-    supa: Supa,
+    supa: StlRvDb,
     dry_run: bool,
     src_to_stl_model_id: dict[int, int],
     slug_filter: str | None,
@@ -565,7 +543,7 @@ def sync_floorplans(
 
 def sync_images(
     sql: sqlite3.Connection,
-    supa: Supa,
+    supa: StlRvDb,
     dry_run: bool,
     src_to_stl_model_id: dict[int, int],
     slug_filter: str | None,
@@ -659,14 +637,9 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    url = os.getenv("SUPABASE_URL", DEFAULT_SUPABASE_URL)
-    key = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
-    if not key:
-        print("ERROR: SUPABASE_SERVICE_KEY env var not set", file=sys.stderr)
-        return 1
-    schema = os.getenv("SUPABASE_SCHEMA", "").strip()
-    if not schema and not url.rstrip("/").endswith(".supabase.co"):
-        print("ERROR: SUPABASE_SCHEMA (stlrv) not set for a self-hosted SUPABASE_URL", file=sys.stderr)
+    dsn = os.getenv("STLRV_DATABASE_URL", "").strip()
+    if not dsn:
+        print("ERROR: STLRV_DATABASE_URL not set (GSM secret stl-rv-database-url)", file=sys.stderr)
         return 1
 
     db_path = Path(args.db)
@@ -674,10 +647,10 @@ def main() -> int:
         print(f"ERROR: rv-catalog DB not found: {db_path}", file=sys.stderr)
         return 1
 
-    supa = Supa(url, key, schema)
+    supa = StlRvDb(dsn)
     sql = sqlite3.connect(db_path)
 
-    print(f"sync rv-catalog ({db_path}) -> STL RV ({url}{f', schema={schema}' if schema else ''})")
+    print(f"sync rv-catalog ({db_path}) -> STL RV (ops-01 stlrv-pg, schema {supa.schema})")
     print(f"mode: {'DRY-RUN' if args.dry_run else 'APPLY'}"
           f"{f', slug={args.slug}' if args.slug else ''}"
           f"{', skip-images' if args.skip_images else ''}")
