@@ -138,14 +138,16 @@ No blocking gap. Optional follow-ups (priority-ordered):
    gap). Catalog totals: 18,832 images / 2,372 floorplan-type.
 5. **PENDING HUMAN (parked 2026-10-18, re-parked 2026-10-26 in #claude-ops,
    channel C0BAUTCAT0Q, ts 1793004629.975179; 48h TTL lapsed ~10-28 with zero
-   replies — NOT re-parked 2026-11-03 per the next-prompt's no-re-park
-   instruction):** apply the STL RV sync. Dry-run diff re-verified three
-   times with no drift — 2026-10-21, 2026-10-26, and **2026-11-03 against the
-   post-cutover target (ops-01 `stlrv-pg`, schema `stlrv`)**: models
+   replies — NOT re-parked 2026-11-03, and re-checked again 2026-11-10: the
+   thread still holds only the park message + one reminder, ZERO human
+   replies, so no apply and no re-park):** apply the STL RV sync. Dry-run diff
+   re-verified four times with no drift — 2026-10-21, 2026-10-26, 2026-11-03,
+   and **2026-11-10 against the post-cutover target (ops-01 `stlrv-pg`,
+   schema `stlrv`)**: models
    inserts=31 updates=116, floorplans inserts=104 updates=196, kb_images
    inserts=478, 0 deletes (STL side has 97 mfrs / 1458 models / 3670
    floorplans / 18523 kb_images in scope; rv-catalog 93 / 1355 / 3754 / 18962).
-   `python -m pytest tests/ -q`: 17/17 (2026-11-03).
+   `python -m pytest tests/ -q`: 17/17 (2026-11-10).
    **Apply recipe (post-cutover, supersedes the old Supabase-service-key
    recipe):** `STLRV_DATABASE_URL=<GSM stl-rv-database-url>` (project
    `savvydealer-website`) `python scripts/sync_to_stl_rv.py` — the script now
@@ -156,8 +158,8 @@ No blocking gap. Optional follow-ups (priority-ordered):
 6. Future: extract floorplan PNGs from sites where current scraper misses
    them (deeper scraper work).
 
-**Next-session prompt:** Resume rv-catalog at C:/Users/adam/rv-catalog — read STATE.md first. All code gaps are closed; the ONLY open item is the STL RV sync apply (STATE.md item 5). The #claude-ops park (channel C0BAUTCAT0Q, ts 1793004629.975179) lapsed ~10-28 with zero replies and was NOT re-parked 2026-11-03; check that thread (and the parker's email) for a reply — read it with `conversations.replies` (form-encoded) using GSM secret `claude-slack-bridge-adam-4090-bot-token` (project savvydealer-website). If approved: `STLRV_DATABASE_URL=<GSM stl-rv-database-url> python scripts/sync_to_stl_rv.py` (ops-01 stlrv-pg; the old Supabase service-key recipe is dead), confirm kb_images inserts=478, re-run `python -m pytest tests/ -q` (17/17), mark item 5 done. If no reply: no work, no re-park — just note the dry-run if it has drifted (last re-verified 2026-11-03 against the post-cutover target: models 31/116, floorplans 104/196, kb_images 478/0, 0 deletes — no drift). Future: extract floorplan PNGs from sites where the scraper misses them.
+**Next-session prompt:** Resume rv-catalog at C:/Users/adam/rv-catalog — read STATE.md first. All code gaps are closed; the ONLY open item is the STL RV sync apply (STATE.md item 5). The #claude-ops park (channel C0BAUTCAT0Q, ts 1793004629.975179) has had zero human replies through 2026-11-10 and has NOT been re-parked (the next-prompt forbids re-parking a lapsed park); check that thread (and the parker's email) for a reply — read it with `conversations.replies` (form-encoded) using GSM secret `claude-slack-bridge-adam-4090-bot-token` (project savvydealer-website). If a human reply approves: `STLRV_DATABASE_URL=<GSM stl-rv-database-url> python scripts/sync_to_stl_rv.py` (ops-01 stlrv-pg; the old Supabase service-key recipe is dead), confirm kb_images inserts=478, re-run `python -m pytest tests/ -q` (17/17), mark item 5 done. If still no reply: no work, no re-park — just re-note the dry-run if it has drifted (last re-verified 2026-11-10 against the post-cutover target: models 31/116, floorplans 104/196, kb_images 478/0, 0 deletes — no drift; run it with the scratch-manifest + `unset PYTHONUSERBASE` child trick, see SESSION-LOG 2026-11-10). Future: extract floorplan PNGs from sites where the scraper misses them.
 
 ## Last verified
 
-2026-11-03
+2026-11-10

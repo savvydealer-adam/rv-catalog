@@ -376,3 +376,32 @@ No code changes this session. Next session: see STATE.md "Immediate next task".
   recipe; the old supabase-service-key-stl-rv recipe is dead), 11-03
   verification recorded, Next-session prompt updated with the reply-check +
   apply commands, Last verified -> 2026-11-03.
+
+## 2026-11-10 - session-driver tick: no reply on the park; dry-run re-verified, no drift; no apply, no re-park
+
+- No code changes. Tree clean, master == origin/master (8107dfe); `git pull`
+  came back already up to date.
+- Checked the #claude-ops park thread (C0BAUTCAT0Q, ts 1793004629.975179) via
+  `conversations.replies` using GSM `claude-slack-bridge-adam-4090-bot-token`
+  (project savvydealer-website, injected via a scratch `secrets.manifest.json`
+  under `~/.claude/tmp/scratch-manifest-rv/` so the value never touched disk
+  or the console). TOTAL_MESSAGES=2: only the original park message
+  (ts=1793004629.975179) and one reminder (ts=1793156052.250079), both posted
+  by the routine bot (user U0B9H84DU87). ZERO human replies (the human,
+  U0860DZPU, is only @-mentioned in the reminder). Park TTL lapsed ~10-28.
+- Per the next-prompt's no-re-park instruction: did NOT re-park. Re-ran the
+  full STL RV sync DRY-RUN (read-only, `STLRV_DATABASE_URL` from GSM
+  `stl-rv-database-url`, ops-01 `stlrv-pg`): manufacturers 0/0; models
+  inserts=31 updates=116; floorplans inserts=104 updates=196; kb_images
+  inserts=478 updates=0; 0 deletes — IDENTICAL to the 10-21 / 10-26 / 11-03
+  verifications. No drift since 11-03.
+- `python -m pytest tests/ -q`: 17 passed.
+- GOTCHA (recovered): the `secrets exec` child inherits a broken
+  `PYTHONUSERBASE` on this box, which silently kills global-site imports —
+  `import psycopg` raised ModuleNotFoundError in the child even though the
+  PATH `python` has psycopg 3.3.3. Fix: run the child as
+  `bash -c 'unset PYTHONUSERBASE; exec python ...'` (matches the existing
+  "PYTHONUSERBASE breaks site-packages imports" learning).
+- STATE.md: item 5 refreshed (fourth no-drift re-verification, 11-10),
+  Next-session prompt updated (thread still unanswered; scratch-manifest +
+  unset-PYTHONUSERBASE dry-run recipe noted), Last verified -> 2026-11-10.
